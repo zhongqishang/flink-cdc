@@ -100,7 +100,18 @@ public class DebeziumUtils {
     /** Fetch current binlog offsets in MySql Server. */
     public static BinlogOffset currentBinlogOffset(JdbcConnection jdbc) {
         final String showMasterStmt = "SHOW MASTER STATUS";
+        final String showServerIdStmt = "SELECT @@server_id";
+
         try {
+            Integer serverId =
+                    jdbc.queryAndMap(
+                            showServerIdStmt,
+                            rs -> {
+                                if (rs.next()) {
+                                    return rs.getInt(1);
+                                }
+                                return null;
+                            });
             return jdbc.queryAndMap(
                     showMasterStmt,
                     rs -> {
@@ -110,7 +121,7 @@ public class DebeziumUtils {
                             final String gtidSet =
                                     rs.getMetaData().getColumnCount() > 4 ? rs.getString(5) : null;
                             return new BinlogOffset(
-                                    binlogFilename, binlogPosition, 0L, 0, 0, gtidSet, null);
+                                    binlogFilename, binlogPosition, 0L, 0, 0, gtidSet, serverId);
                         } else {
                             throw new FlinkRuntimeException(
                                     "Cannot read the binlog filename and position via '"
