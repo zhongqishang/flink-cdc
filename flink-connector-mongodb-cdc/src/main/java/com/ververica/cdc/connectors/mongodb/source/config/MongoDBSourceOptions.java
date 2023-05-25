@@ -20,6 +20,8 @@ import org.apache.flink.annotation.Experimental;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.ConfigOptions;
 
+import com.ververica.cdc.debezium.table.DebeziumChangelogMode;
+
 /** Configurations for {@link com.ververica.cdc.connectors.mongodb.source.MongoDBSource}. */
 public class MongoDBSourceOptions {
 
@@ -132,4 +134,13 @@ public class MongoDBSourceOptions {
                     .defaultValue(64)
                     .withDescription(
                             "The chunk size mb of incremental snapshot. Defaults to 64mb.");
+
+    public static final ConfigOption<DebeziumChangelogMode> CHANGELOG_MODE =
+            ConfigOptions.key("changelog-mode")
+                    .enumType(DebeziumChangelogMode.class)
+                    .defaultValue(DebeziumChangelogMode.ALL)
+                    .withDescription(
+                            "The changelog mode used for encoding streaming changes.\n"
+                                    + "\"all\": Encodes changes as retract stream using all RowKinds. This is the default mode.\n"
+                                    + "\"upsert\": Encodes changes as upsert stream that describes idempotent updates on a key. It can be used for tables with primary keys when replica identity FULL is not an option.");
 }

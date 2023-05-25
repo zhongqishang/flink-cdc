@@ -34,6 +34,7 @@ import org.apache.flink.table.runtime.connector.source.ScanRuntimeProviderContex
 import org.apache.flink.util.ExceptionUtils;
 
 import com.ververica.cdc.debezium.DebeziumSourceFunction;
+import com.ververica.cdc.debezium.table.DebeziumChangelogMode;
 import com.ververica.cdc.debezium.utils.ResolvedSchemaUtils;
 import org.junit.Test;
 
@@ -46,6 +47,7 @@ import java.util.Map;
 
 import static com.ververica.cdc.connectors.base.options.SourceOptions.CHUNK_META_GROUP_SIZE;
 import static com.ververica.cdc.connectors.mongodb.source.config.MongoDBSourceOptions.BATCH_SIZE;
+import static com.ververica.cdc.connectors.mongodb.source.config.MongoDBSourceOptions.CHANGELOG_MODE;
 import static com.ververica.cdc.connectors.mongodb.source.config.MongoDBSourceOptions.COPY_EXISTING;
 import static com.ververica.cdc.connectors.mongodb.source.config.MongoDBSourceOptions.HEARTBEAT_INTERVAL_MILLIS;
 import static com.ververica.cdc.connectors.mongodb.source.config.MongoDBSourceOptions.POLL_AWAIT_TIME_MILLIS;
@@ -101,6 +103,8 @@ public class MongoDBTableFactoryTest {
     private static final int SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE_MB_DEFAULT =
             SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE_MB.defaultValue();
     private static final int CHUNK_META_GROUP_SIZE_DEFAULT = CHUNK_META_GROUP_SIZE.defaultValue();
+    private static final DebeziumChangelogMode CHANGELOG_MODE_DEFAULT =
+            CHANGELOG_MODE.defaultValue();
 
     @Test
     public void testCommonProperties() {
@@ -126,7 +130,8 @@ public class MongoDBTableFactoryTest {
                         LOCAL_TIME_ZONE,
                         SCAN_INCREMENTAL_SNAPSHOT_ENABLED_DEFAULT,
                         CHUNK_META_GROUP_SIZE_DEFAULT,
-                        SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE_MB_DEFAULT);
+                        SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE_MB_DEFAULT,
+                        CHANGELOG_MODE_DEFAULT);
         assertEquals(expectedSource, actualSource);
     }
 
@@ -163,7 +168,8 @@ public class MongoDBTableFactoryTest {
                         LOCAL_TIME_ZONE,
                         true,
                         1001,
-                        10);
+                        10,
+                        CHANGELOG_MODE_DEFAULT);
         assertEquals(expectedSource, actualSource);
     }
 
@@ -197,7 +203,8 @@ public class MongoDBTableFactoryTest {
                         LOCAL_TIME_ZONE,
                         SCAN_INCREMENTAL_SNAPSHOT_ENABLED_DEFAULT,
                         CHUNK_META_GROUP_SIZE_DEFAULT,
-                        SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE_MB_DEFAULT);
+                        SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE_MB_DEFAULT,
+                        CHANGELOG_MODE_DEFAULT);
 
         expectedSource.producedDataType = SCHEMA_WITH_METADATA.toSourceRowDataType();
         expectedSource.metadataKeys = Arrays.asList("op_ts", "database_name");
