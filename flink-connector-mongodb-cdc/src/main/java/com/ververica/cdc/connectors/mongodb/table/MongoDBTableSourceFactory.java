@@ -29,6 +29,7 @@ import org.apache.flink.table.factories.FactoryUtil;
 
 import com.ververica.cdc.connectors.base.options.StartupOptions;
 import com.ververica.cdc.connectors.base.utils.OptionUtils;
+import com.ververica.cdc.debezium.table.DebeziumChangelogMode;
 
 import java.time.ZoneId;
 import java.util.HashSet;
@@ -39,6 +40,7 @@ import static com.ververica.cdc.connectors.base.options.SourceOptions.SCAN_INCRE
 import static com.ververica.cdc.connectors.base.options.SourceOptions.SCAN_STARTUP_MODE;
 import static com.ververica.cdc.connectors.base.options.SourceOptions.SCAN_STARTUP_TIMESTAMP_MILLIS;
 import static com.ververica.cdc.connectors.mongodb.source.config.MongoDBSourceOptions.BATCH_SIZE;
+import static com.ververica.cdc.connectors.mongodb.source.config.MongoDBSourceOptions.CHANGELOG_MODE;
 import static com.ververica.cdc.connectors.mongodb.source.config.MongoDBSourceOptions.COLLECTION;
 import static com.ververica.cdc.connectors.mongodb.source.config.MongoDBSourceOptions.CONNECTION_OPTIONS;
 import static com.ververica.cdc.connectors.mongodb.source.config.MongoDBSourceOptions.COPY_EXISTING_QUEUE_SIZE;
@@ -101,6 +103,7 @@ public class MongoDBTableSourceFactory implements DynamicTableSourceFactory {
 
         int splitSizeMB = config.get(SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE_MB);
         int splitMetaGroupSize = config.get(CHUNK_META_GROUP_SIZE);
+        DebeziumChangelogMode changelogMode = config.get(CHANGELOG_MODE);
 
         ResolvedSchema physicalSchema =
                 getPhysicalSchema(context.getCatalogTable().getResolvedSchema());
@@ -128,7 +131,8 @@ public class MongoDBTableSourceFactory implements DynamicTableSourceFactory {
                 enableParallelRead,
                 splitMetaGroupSize,
                 splitSizeMB,
-                enableCloseIdleReaders);
+                enableCloseIdleReaders,
+                changelogMode);
     }
 
     private void checkPrimaryKey(UniqueConstraint pk, String message) {
@@ -200,6 +204,7 @@ public class MongoDBTableSourceFactory implements DynamicTableSourceFactory {
         options.add(SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE_MB);
         options.add(CHUNK_META_GROUP_SIZE);
         options.add(SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED);
+        options.add(CHANGELOG_MODE);
         return options;
     }
 }

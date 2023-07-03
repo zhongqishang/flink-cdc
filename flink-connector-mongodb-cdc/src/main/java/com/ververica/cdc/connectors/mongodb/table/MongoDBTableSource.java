@@ -28,12 +28,12 @@ import org.apache.flink.table.connector.source.abilities.SupportsReadingMetadata
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.logical.RowType;
-import org.apache.flink.types.RowKind;
 
 import com.ververica.cdc.connectors.base.options.StartupOptions;
 import com.ververica.cdc.connectors.mongodb.source.MongoDBSource;
 import com.ververica.cdc.connectors.mongodb.source.MongoDBSourceBuilder;
 import com.ververica.cdc.debezium.DebeziumDeserializationSchema;
+import com.ververica.cdc.debezium.table.DebeziumChangelogMode;
 import com.ververica.cdc.debezium.table.MetadataConverter;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -83,6 +83,8 @@ public class MongoDBTableSource implements ScanTableSource, SupportsReadingMetad
     private final Integer splitSizeMB;
     private final boolean closeIdlerReaders;
 
+    private final DebeziumChangelogMode changelogMode;
+
     // --------------------------------------------------------------------------------------------
     // Mutable attributes
     // --------------------------------------------------------------------------------------------
@@ -112,7 +114,8 @@ public class MongoDBTableSource implements ScanTableSource, SupportsReadingMetad
             boolean enableParallelRead,
             @Nullable Integer splitMetaGroupSize,
             @Nullable Integer splitSizeMB,
-            boolean closeIdlerReaders) {
+            boolean closeIdlerReaders,
+            DebeziumChangelogMode changelogMode) {
         this.physicalSchema = physicalSchema;
         this.scheme = checkNotNull(scheme);
         this.hosts = checkNotNull(hosts);
@@ -134,15 +137,20 @@ public class MongoDBTableSource implements ScanTableSource, SupportsReadingMetad
         this.splitMetaGroupSize = splitMetaGroupSize;
         this.splitSizeMB = splitSizeMB;
         this.closeIdlerReaders = closeIdlerReaders;
+        this.changelogMode = changelogMode;
     }
 
     @Override
     public ChangelogMode getChangelogMode() {
-        return ChangelogMode.newBuilder()
-                .addContainedKind(RowKind.INSERT)
-                .addContainedKind(RowKind.UPDATE_AFTER)
-                .addContainedKind(RowKind.DELETE)
-                .build();
+        switch (changelogMode) {
+            case UPSERT:
+                return ChangelogMode.upsert();
+            case ALL:
+                return ChangelogMode.all();
+            default:
+                throw new UnsupportedOperationException(
+                        "Unsupported changelog mode: " + changelogMode);
+        }
     }
 
     @Override
@@ -289,7 +297,8 @@ public class MongoDBTableSource implements ScanTableSource, SupportsReadingMetad
                         enableParallelRead,
                         splitMetaGroupSize,
                         splitSizeMB,
-                        closeIdlerReaders);
+                        closeIdlerReaders,
+                        changelogMode);
         source.metadataKeys = metadataKeys;
         source.producedDataType = producedDataType;
         return source;

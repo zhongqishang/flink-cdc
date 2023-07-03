@@ -35,6 +35,7 @@ import org.apache.flink.util.ExceptionUtils;
 
 import com.ververica.cdc.connectors.base.options.StartupOptions;
 import com.ververica.cdc.debezium.DebeziumSourceFunction;
+import com.ververica.cdc.debezium.table.DebeziumChangelogMode;
 import com.ververica.cdc.debezium.utils.ResolvedSchemaUtils;
 import org.junit.Test;
 
@@ -49,6 +50,7 @@ import static com.ververica.cdc.connectors.base.options.SourceOptions.CHUNK_META
 import static com.ververica.cdc.connectors.base.options.SourceOptions.SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED;
 import static com.ververica.cdc.connectors.mongodb.internal.MongoDBEnvelope.MONGODB_SRV_SCHEME;
 import static com.ververica.cdc.connectors.mongodb.source.config.MongoDBSourceOptions.BATCH_SIZE;
+import static com.ververica.cdc.connectors.mongodb.source.config.MongoDBSourceOptions.CHANGELOG_MODE;
 import static com.ververica.cdc.connectors.mongodb.source.config.MongoDBSourceOptions.HEARTBEAT_INTERVAL_MILLIS;
 import static com.ververica.cdc.connectors.mongodb.source.config.MongoDBSourceOptions.POLL_AWAIT_TIME_MILLIS;
 import static com.ververica.cdc.connectors.mongodb.source.config.MongoDBSourceOptions.POLL_MAX_BATCH_SIZE;
@@ -105,6 +107,8 @@ public class MongoDBTableFactoryTest {
     private static final int CHUNK_META_GROUP_SIZE_DEFAULT = CHUNK_META_GROUP_SIZE.defaultValue();
     private static final boolean SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT =
             SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED.defaultValue();
+    private static final DebeziumChangelogMode CHANGELOG_MODE_DEFAULT =
+            CHANGELOG_MODE.defaultValue();
 
     @Test
     public void testCommonProperties() {
@@ -132,7 +136,8 @@ public class MongoDBTableFactoryTest {
                         SCAN_INCREMENTAL_SNAPSHOT_ENABLED_DEFAULT,
                         CHUNK_META_GROUP_SIZE_DEFAULT,
                         SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE_MB_DEFAULT,
-                        SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT);
+                        SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT,
+                        CHANGELOG_MODE_DEFAULT);
         assertEquals(expectedSource, actualSource);
     }
 
@@ -174,7 +179,8 @@ public class MongoDBTableFactoryTest {
                         true,
                         1001,
                         10,
-                        true);
+                        true,
+                        CHANGELOG_MODE_DEFAULT);
         assertEquals(expectedSource, actualSource);
     }
 
@@ -210,7 +216,8 @@ public class MongoDBTableFactoryTest {
                         SCAN_INCREMENTAL_SNAPSHOT_ENABLED_DEFAULT,
                         CHUNK_META_GROUP_SIZE_DEFAULT,
                         SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE_MB_DEFAULT,
-                        SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT);
+                        SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT,
+                        CHANGELOG_MODE_DEFAULT);
 
         expectedSource.producedDataType = SCHEMA_WITH_METADATA.toSourceRowDataType();
         expectedSource.metadataKeys = Arrays.asList("op_ts", "database_name");
