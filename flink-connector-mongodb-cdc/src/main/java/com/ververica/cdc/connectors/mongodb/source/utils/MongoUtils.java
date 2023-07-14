@@ -58,8 +58,6 @@ import static com.ververica.cdc.connectors.mongodb.internal.MongoDBEnvelope.KEY_
 import static com.ververica.cdc.connectors.mongodb.internal.MongoDBEnvelope.NAMESPACE_FIELD;
 import static com.ververica.cdc.connectors.mongodb.internal.MongoDBEnvelope.UUID_FIELD;
 import static com.ververica.cdc.connectors.mongodb.internal.MongoDBEnvelope.encodeValue;
-import static com.ververica.cdc.connectors.mongodb.source.utils.CollectionDiscoveryUtils.ADD_NS_FIELD;
-import static com.ververica.cdc.connectors.mongodb.source.utils.CollectionDiscoveryUtils.ADD_NS_FIELD_NAME;
 import static com.ververica.cdc.connectors.mongodb.source.utils.CollectionDiscoveryUtils.includeListAsFlatPattern;
 import static com.ververica.cdc.connectors.mongodb.source.utils.CollectionDiscoveryUtils.isIncludeListExplicitlySpecified;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -166,9 +164,9 @@ public class MongoUtils {
         } else if (StringUtils.isNotEmpty(database) && namespaceRegex != null) {
             MongoDatabase db = mongoClient.getDatabase(database);
             List<Bson> pipeline = new ArrayList<>();
-            pipeline.add(ADD_NS_FIELD);
-            Bson nsFilter = regex(ADD_NS_FIELD_NAME, namespaceRegex);
-            pipeline.add(match(nsFilter));
+            Bson dbFilter = eq("ns.db", database);
+            Bson collFilter = regex("ns.coll", namespaceRegex);
+            pipeline.add(match(and(dbFilter, collFilter)));
             LOG.info(
                     "Preparing change stream for database {} with namespace regex filter {}",
                     database,
@@ -180,9 +178,8 @@ public class MongoUtils {
             changeStream = db.watch();
         } else if (namespaceRegex != null) {
             List<Bson> pipeline = new ArrayList<>();
-            pipeline.add(ADD_NS_FIELD);
 
-            Bson nsFilter = regex(ADD_NS_FIELD_NAME, namespaceRegex);
+            Bson nsFilter = regex("ns.coll", namespaceRegex);
             if (databaseRegex != null) {
                 Bson dbFilter = regex("ns.db", databaseRegex);
                 nsFilter = and(dbFilter, nsFilter);

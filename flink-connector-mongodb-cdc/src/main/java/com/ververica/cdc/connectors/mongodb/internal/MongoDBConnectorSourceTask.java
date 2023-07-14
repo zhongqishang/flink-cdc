@@ -48,8 +48,6 @@ import static com.mongodb.client.model.Aggregates.match;
 import static com.mongodb.client.model.Filters.and;
 import static com.mongodb.client.model.Filters.regex;
 import static com.ververica.cdc.connectors.mongodb.internal.MongoDBEnvelope.HEARTBEAT_VALUE_SCHEMA;
-import static com.ververica.cdc.connectors.mongodb.source.utils.CollectionDiscoveryUtils.ADD_NS_FIELD;
-import static com.ververica.cdc.connectors.mongodb.source.utils.CollectionDiscoveryUtils.ADD_NS_FIELD_NAME;
 import static com.ververica.cdc.connectors.mongodb.source.utils.CollectionDiscoveryUtils.bsonListToJson;
 import static com.ververica.cdc.connectors.mongodb.source.utils.CollectionDiscoveryUtils.collectionNames;
 import static com.ververica.cdc.connectors.mongodb.source.utils.CollectionDiscoveryUtils.collectionsFilter;
@@ -286,9 +284,8 @@ public class MongoDBConnectorSourceTask extends SourceTask {
                                 .collect(Collectors.joining("|"));
 
                 List<Bson> pipeline = new ArrayList<>();
-                pipeline.add(ADD_NS_FIELD);
 
-                Bson nsFilter = regex(ADD_NS_FIELD_NAME, namespacesRegex);
+                Bson nsFilter = regex("ns.coll", namespacesRegex);
                 if (databaseList != null) {
                     if (isIncludeListExplicitlySpecified(databaseList, discoveredDatabases)) {
                         props.put(MongoSourceConfig.DATABASE_CONFIG, discoveredDatabases.get(0));

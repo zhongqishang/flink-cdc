@@ -38,8 +38,10 @@ public class CollectionDiscoveryUtils {
 
     public static final String REGEX_META_CHARACTERS = ".$|()[]{}<>^?*+=!\\";
 
-    public static final String ADD_NS_FIELD_NAME = "_ns_";
+    /** Deprecated : Not compatible MongoDB 4.2.12. */
+    @Deprecated public static final String ADD_NS_FIELD_NAME = "_ns_";
 
+    @Deprecated
     public static final Bson ADD_NS_FIELD =
             BsonDocument.parse(
                     String.format(
