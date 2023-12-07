@@ -31,14 +31,31 @@ import com.ververica.cdc.debezium.table.DeserializationRuntimeConverterFactory;
 import io.debezium.data.EnumSet;
 import io.debezium.data.geometry.Geometry;
 import io.debezium.data.geometry.Point;
+import io.debezium.time.Date;
+import io.debezium.time.MicroTime;
+import io.debezium.time.MicroTimestamp;
+import io.debezium.time.Timestamp;
+import io.debezium.time.ZonedTimestamp;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
 
 import java.nio.ByteBuffer;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.TemporalAccessor;
+import java.time.temporal.TemporalQueries;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+
+import static com.ververica.cdc.connectors.mysql.utils.TimeFormats.ISO8601_TIMESTAMP_WITH_LOCAL_TIMEZONE_FORMAT;
+import static com.ververica.cdc.connectors.mysql.utils.TimeFormats.SQL_TIMESTAMP_FORMAT;
+import static com.ververica.cdc.connectors.mysql.utils.TimeFormats.SQL_TIME_FORMAT;
 
 /** Used to create {@link DeserializationRuntimeConverterFactory} specified to MySQL. */
 public class MySqlDeserializationConverterFactory {
@@ -105,6 +122,48 @@ public class MySqlDeserializationConverterFactory {
                                                 "Failed to convert %s to geometry JSON.", dbzObj),
                                         e);
                             }
+                        } else if (Timestamp.SCHEMA_NAME.equals(schema.name())) {
+                            ZonedDateTime zonedDateTime =
+                                    Instant.ofEpochMilli((Long) dbzObj).atZone(ZoneOffset.UTC);
+                            return StringData.fromString(
+                                    SQL_TIMESTAMP_FORMAT.format(zonedDateTime));
+                        } else if (ZonedTimestamp.SCHEMA_NAME.equals(schema.name())) {
+                            ZonedDateTime zonedDateTime;
+                            // io.debezium.relational.TableSchemaBuilder.createValueGenerator
+                            if (dbzObj instanceof String) {
+                                TemporalAccessor parsedTimestampWithLocalZone =
+                                        ISO8601_TIMESTAMP_WITH_LOCAL_TIMEZONE_FORMAT.parse(
+                                                (String) dbzObj);
+                                LocalTime localTime =
+                                        parsedTimestampWithLocalZone.query(
+                                                TemporalQueries.localTime());
+                                LocalDate localDate =
+                                        parsedTimestampWithLocalZone.query(
+                                                TemporalQueries.localDate());
+                                zonedDateTime =
+                                        ZonedDateTime.of(localDate, localTime, ZoneOffset.UTC);
+                            } else {
+                                zonedDateTime =
+                                        Instant.ofEpochMilli((Long) dbzObj).atZone(ZoneOffset.UTC);
+                            }
+                            return StringData.fromString(
+                                    SQL_TIMESTAMP_FORMAT.format(zonedDateTime));
+                        } else if (MicroTime.SCHEMA_NAME.equals(schema.name())) {
+                            LocalTime time = LocalTime.ofSecondOfDay((Long) dbzObj / 1000000L);
+                            return StringData.fromString(SQL_TIME_FORMAT.format(time));
+                        } else if (MicroTimestamp.SCHEMA_NAME.equals(schema.name())) {
+                            ZonedDateTime zonedDateTime =
+                                    Instant.ofEpochMilli((Long) dbzObj / 1000L)
+                                            .atZone(ZoneOffset.UTC);
+                            return StringData.fromString(
+                                    SQL_TIMESTAMP_FORMAT.format(zonedDateTime));
+                        } else if (Date.SCHEMA_NAME.equals(schema.name())) {
+                            LocalDate localDate = LocalDate.ofEpochDay((Integer) dbzObj);
+                            return StringData.fromString(
+                                    DateTimeFormatter.ISO_LOCAL_DATE.format(localDate));
+                        } else if (Schema.Type.BOOLEAN == schema.type()) {
+                            Boolean aBoolean = (Boolean) dbzObj;
+                            return StringData.fromString(String.valueOf(aBoolean ? 1 : 0));
                         } else {
                             return StringData.fromString(dbzObj.toString());
                         }

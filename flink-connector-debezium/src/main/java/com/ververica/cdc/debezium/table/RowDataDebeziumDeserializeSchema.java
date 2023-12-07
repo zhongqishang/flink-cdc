@@ -508,6 +508,28 @@ public final class RowDataDebeziumDeserializeSchema
                     Instant instant = Instant.parse(str);
                     return TimestampData.fromLocalDateTime(
                             LocalDateTime.ofInstant(instant, serverTimeZone));
+                } else if (dbzObj instanceof Long) {
+                    Instant instant;
+                    switch (schema.name()) {
+                        case Timestamp.SCHEMA_NAME:
+                            instant = Instant.ofEpochMilli((Long) dbzObj);
+                            break;
+                        case MicroTimestamp.SCHEMA_NAME:
+                            long micro = (long) dbzObj;
+                            instant =
+                                    Instant.ofEpochSecond(
+                                            micro / 1000, (int) (micro % 1000 * 1000));
+                            break;
+                        case NanoTimestamp.SCHEMA_NAME:
+                            long nano = (long) dbzObj;
+                            instant =
+                                    Instant.ofEpochSecond(nano / 1000_000, (int) (nano % 1000_000));
+                            break;
+                        default:
+                            throw new RuntimeException("Unsupported " + schema.name());
+                    }
+                    return TimestampData.fromLocalDateTime(
+                            LocalDateTime.ofInstant(instant, serverTimeZone));
                 }
                 throw new IllegalArgumentException(
                         "Unable to convert to TimestampData from unexpected value '"
