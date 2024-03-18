@@ -167,7 +167,6 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<WriteResul
             LOG.info("Get latest schema is {}.", schema);
             DataType dataType = DataTypeUtils.toFlinkDataType(schema.toRowDataType());
 
-            // TODO 不能使用 SerializableTable 替换为 tableLoader
             TaskWriterFactory<RowData> taskWriterFactory =
                     new EventTaskWriterFactory(
                             tableSupplier,

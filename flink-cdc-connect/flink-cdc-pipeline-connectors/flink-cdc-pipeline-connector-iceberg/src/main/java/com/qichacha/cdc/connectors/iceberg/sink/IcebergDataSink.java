@@ -1,10 +1,10 @@
 // package com.qichacha.cdc.connectors.iceberg.sink;
 //
-// import org.apache.flink.cdc.common.event.Event;
-// import org.apache.flink.cdc.common.sink.DataSink;
-// import org.apache.flink.cdc.common.sink.DataStreamSinkProvider;
-// import org.apache.flink.cdc.common.sink.EventSinkProvider;
-// import org.apache.flink.cdc.common.sink.MetadataApplier;
+// import com.ververica.cdc.common.event.Event;
+// import com.ververica.cdc.common.sink.DataSink;
+// import com.ververica.cdc.common.sink.DataStreamSinkProvider;
+// import com.ververica.cdc.common.sink.EventSinkProvider;
+// import com.ververica.cdc.common.sink.MetadataApplier;
 // import org.apache.flink.api.common.typeinfo.TypeInformation;
 // import org.apache.flink.streaming.api.datastream.DataStream;
 // import org.apache.flink.streaming.api.datastream.DataStreamSink;
