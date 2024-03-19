@@ -48,7 +48,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.rules.TemporaryFolder;
-import org.locationtech.jts.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
@@ -74,6 +73,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /** Integration test for validating specifying starting offset. */
 public class SpecificStartingOffsetITCase {
@@ -263,7 +263,7 @@ public class SpecificStartingOffsetITCase {
         // Purge binary log at first
         purgeBinaryLogs();
 
-        Assert.equals(
+        assertEquals(
                 BinlogOffset.ofBinlogFilePosition("mysql-bin.000004", 0),
                 DebeziumUtils.findBinlogOffset(System.currentTimeMillis(), connection));
 
@@ -307,24 +307,24 @@ public class SpecificStartingOffsetITCase {
         long t5 = System.currentTimeMillis();
         flushLogs();
 
-        Assert.equals(
+        assertEquals(
                 BinlogOffset.ofBinlogFilePosition("mysql-bin.000005", 0),
                 DebeziumUtils.findBinlogOffset(t1, connection));
-        Assert.equals(
+        assertEquals(
                 BinlogOffset.ofBinlogFilePosition("mysql-bin.000006", 0),
                 DebeziumUtils.findBinlogOffset(t2, connection));
-        Assert.equals(
+        assertEquals(
                 BinlogOffset.ofBinlogFilePosition("mysql-bin.000007", 0),
                 DebeziumUtils.findBinlogOffset(t3, connection));
-        Assert.equals(
+        assertEquals(
                 BinlogOffset.ofBinlogFilePosition("mysql-bin.000008", 0),
                 DebeziumUtils.findBinlogOffset(t4, connection));
-        Assert.equals(
+        assertEquals(
                 BinlogOffset.ofBinlogFilePosition("mysql-bin.000009", 0),
                 DebeziumUtils.findBinlogOffset(t5, connection));
 
         purgeBinaryLogs();
-        Assert.equals(
+        assertEquals(
                 BinlogOffset.ofBinlogFilePosition("mysql-bin.000009", 0),
                 DebeziumUtils.findBinlogOffset(t3, connection));
     }
