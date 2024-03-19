@@ -13,7 +13,7 @@
     <artifactId>flink-cdc-pipeline-connector-iceberg</artifactId>
 
     <properties>
-        <iceberg.connector.version>1.4.3</iceberg.connector.version>
+        <iceberg.connector.version>1.5.0</iceberg.connector.version>
     </properties>
 
     <dependencies>
@@ -26,7 +26,7 @@
         <!-- https://mvnrepository.com/artifact/org.apache.iceberg/iceberg-flink-runtime-1.18 -->
         <dependency>
             <groupId>org.apache.iceberg</groupId>
-            <artifactId>iceberg-flink-runtime-1.17</artifactId>
+            <artifactId>iceberg-flink-runtime-${flink.major.version}</artifactId>
             <version>${iceberg.connector.version}</version>
         </dependency>
 
@@ -81,8 +81,8 @@
                     <artifactId>*</artifactId>
                 </exclusion>
                 <exclusion>
-                    <groupId>commons-math3</groupId>
-                    <artifactId>org.apache.commons</artifactId>
+                    <groupId>org.apache.commons</groupId>
+                    <artifactId>commons-math3</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
