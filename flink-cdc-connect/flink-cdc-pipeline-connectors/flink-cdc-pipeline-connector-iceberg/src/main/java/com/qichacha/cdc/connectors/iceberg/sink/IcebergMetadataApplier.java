@@ -26,11 +26,13 @@ import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.flink.CatalogLoader;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
 import org.apache.iceberg.types.Type;
+import org.apache.iceberg.types.Types;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static com.qichacha.cdc.connectors.iceberg.Sync.toPartitionSpec;
 
@@ -53,7 +55,6 @@ public class IcebergMetadataApplier implements MetadataApplier {
             isOpened = true;
         }
 
-        // TODO DDL 去重操作
         if (schemaChangeEvent instanceof CreateTableEvent) {
             applyCreateTable((CreateTableEvent) schemaChangeEvent);
         } else if (schemaChangeEvent instanceof AddColumnEvent) {
@@ -75,7 +76,14 @@ public class IcebergMetadataApplier implements MetadataApplier {
         Schema schema = createTableEvent.getSchema();
         TableIdentifier tableIdentifier = TableIdentifier.of("ods_iceberg", tableId.getTableName());
         if (catalog.tableExists(tableIdentifier)) {
-            // TODO 校验 schema 兼容？
+            // validate schema
+            Table table = catalog.loadTable(tableIdentifier);
+            Types.StructType struct = table.schema().asStruct();
+            for (String columnName : createTableEvent.getSchema().getColumnNames()) {
+                if (struct.fieldType(columnName) == null) {
+                    LOG.warn("Column {} will not be found in iceberg schema.", columnName);
+                }
+            }
             return;
         }
 
@@ -99,11 +107,23 @@ public class IcebergMetadataApplier implements MetadataApplier {
         TableId tableId = addColumnEvent.tableId();
         TableIdentifier tableIdentifier = TableIdentifier.of("ods_iceberg", tableId.getTableName());
         Table loadTable = catalog.loadTable(tableIdentifier);
+
+        // Filter not exists column
+        List<AddColumnEvent.ColumnWithPosition> columnWithPositions =
+                addColumnEvent.getAddedColumns().stream()
+                        .filter(
+                                addCol ->
+                                        loadTable
+                                                        .schema()
+                                                        .asStruct()
+                                                        .field(addCol.getAddColumn().getName())
+                                                == null)
+                        .collect(Collectors.toList());
+
         Transaction transaction = loadTable.newTransaction();
         UpdateSchema pendingUpdate = transaction.updateSchema();
 
-        for (AddColumnEvent.ColumnWithPosition columnWithPosition :
-                addColumnEvent.getAddedColumns()) {
+        for (AddColumnEvent.ColumnWithPosition columnWithPosition : columnWithPositions) {
             // we will ignore position information, and always add the column to the last.
             // The reason is that ...
             Column column = columnWithPosition.getAddColumn();
@@ -124,8 +144,13 @@ public class IcebergMetadataApplier implements MetadataApplier {
         Transaction transaction = loadTable.newTransaction();
         UpdateSchema pendingUpdate = transaction.updateSchema();
 
-        List<String> dropColumns = dropColumnEvent.getDroppedColumnNames();
-        for (String dropColumn : dropColumns) {
+        // Filter exists column
+        List<String> columns =
+                dropColumnEvent.getDroppedColumnNames().stream()
+                        .filter(dropCol -> loadTable.schema().asStruct().fieldType(dropCol) != null)
+                        .collect(Collectors.toList());
+
+        for (String dropColumn : columns) {
             pendingUpdate.deleteColumn(dropColumn);
         }
         pendingUpdate.commit();
@@ -140,10 +165,17 @@ public class IcebergMetadataApplier implements MetadataApplier {
         Transaction transaction = loadTable.newTransaction();
         UpdateSchema pendingUpdate = transaction.updateSchema();
 
-        for (Map.Entry<String, String> renameColumn :
-                renameColumnEvent.getNameMapping().entrySet()) {
-            pendingUpdate.renameColumn(renameColumn.getKey(), renameColumn.getValue());
-        }
+        // Filter exists column
+        Map<String, String> columns =
+                renameColumnEvent.getNameMapping().entrySet().stream()
+                        .filter(
+                                renameCol ->
+                                        loadTable.schema().asStruct().field(renameCol.getKey())
+                                                != null)
+                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        columns.forEach(pendingUpdate::renameColumn);
+
         pendingUpdate.commit();
         transaction.commitTransaction();
         LOG.info("Successful to apply rename column, event: {}", renameColumnEvent);
@@ -156,8 +188,16 @@ public class IcebergMetadataApplier implements MetadataApplier {
         Transaction transaction = loadTable.newTransaction();
         UpdateSchema pendingUpdate = transaction.updateSchema();
 
-        for (Map.Entry<String, DataType> renameColumn :
-                alterColumnTypeEvent.getTypeMapping().entrySet()) {
+        // Filter exists column
+        Map<String, DataType> columns =
+                alterColumnTypeEvent.getTypeMapping().entrySet().stream()
+                        .filter(
+                                renameCol ->
+                                        loadTable.schema().asStruct().field(renameCol.getKey())
+                                                != null)
+                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        for (Map.Entry<String, DataType> renameColumn : columns.entrySet()) {
             String columnName = renameColumn.getKey();
             Type icebergType =
                     FlinkSchemaUtil.convert(
