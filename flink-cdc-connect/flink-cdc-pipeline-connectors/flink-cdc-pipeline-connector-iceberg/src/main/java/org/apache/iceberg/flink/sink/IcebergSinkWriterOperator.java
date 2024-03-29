@@ -193,6 +193,8 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<WriteResul
             case UPDATE:
             case REPLACE:
             case INSERT:
+                // TODO validate schema
+                // Kafka multiple partitions duo to not in strict order
                 RecordData after = dataChangeEvent.after();
                 RowData rowData = serializerRecord(RowKind.INSERT, after);
                 copySinkWriter.processElement(new StreamRecord<>(rowData));
