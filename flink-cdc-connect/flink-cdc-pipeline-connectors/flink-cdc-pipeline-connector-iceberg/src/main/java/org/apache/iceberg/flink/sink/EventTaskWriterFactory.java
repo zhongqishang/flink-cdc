@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iceberg.flink.sink;
 
 import org.apache.flink.table.data.RowData;
@@ -43,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
+/** EventTaskWriterFactory. */
 public class EventTaskWriterFactory implements TaskWriterFactory<RowData> {
     private final Supplier<Table> tableSupplier;
     private Schema schema;
@@ -228,6 +230,7 @@ public class EventTaskWriterFactory implements TaskWriterFactory<RowData> {
         }
     }
 
+    /** RowDataPartitionedFanoutWriter. */
     private static class RowDataPartitionedFanoutWriter extends PartitionedFanoutWriter<RowData> {
 
         private final PartitionKey partitionKey;

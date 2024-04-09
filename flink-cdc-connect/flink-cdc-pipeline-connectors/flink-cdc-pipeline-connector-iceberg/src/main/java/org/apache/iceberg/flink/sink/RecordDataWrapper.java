@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iceberg.flink.sink;
 
 import org.apache.flink.cdc.common.data.RecordData;
@@ -36,6 +37,7 @@ import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
 
+/** Record Data Wrapper. */
 public class RecordDataWrapper implements StructLike {
 
     private final LogicalType[] types;

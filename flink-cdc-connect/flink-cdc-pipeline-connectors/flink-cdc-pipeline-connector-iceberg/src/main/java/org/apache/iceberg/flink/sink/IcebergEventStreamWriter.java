@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iceberg.flink.sink;
 
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
@@ -31,6 +32,7 @@ import org.apache.iceberg.relocated.com.google.common.base.MoreObjects;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
+/** IcebergEventStreamWriter. */
 public class IcebergEventStreamWriter<T> extends AbstractStreamOperator<WriteResult>
         implements OneInputStreamOperator<T, WriteResult>, BoundedOneInput {
 
@@ -124,7 +126,7 @@ public class IcebergEventStreamWriter<T> extends AbstractStreamOperator<WriteRes
                 .toString();
     }
 
-    /** close all open files and emit files to downstream committer operator */
+    /** close all open files and emit files to downstream committer operator. */
     public void flush() throws IOException {
         if (writer == null) {
             return;

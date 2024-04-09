@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iceberg.flink.sink;
 
 import org.apache.flink.api.common.functions.MapFunction;
@@ -78,6 +79,7 @@ import static org.apache.iceberg.TableProperties.PARQUET_COMPRESSION;
 import static org.apache.iceberg.TableProperties.PARQUET_COMPRESSION_LEVEL;
 import static org.apache.iceberg.TableProperties.WRITE_DISTRIBUTION_MODE;
 
+/** Flink Event Sink. */
 public class FlinkEventSink {
     private static final Logger LOG = LoggerFactory.getLogger(FlinkEventSink.class);
 
@@ -116,6 +118,7 @@ public class FlinkEventSink {
         return new Builder().forEvent(input);
     }
 
+    /** FlinkEventSink Builder. */
     public static class Builder {
         private Function<String, DataStream<Event>> inputCreator = null;
         private TableLoader tableLoader;
