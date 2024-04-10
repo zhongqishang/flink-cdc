@@ -90,7 +90,7 @@ class EventEqualityFieldKeySelector implements KeySelector<PartitioningEvent, In
                     lazyRowDataWrapper().wrap(((DataChangeEvent) payload).after());
             StructProjection projectedRowData = lazyStructProjection().wrap(wrappedRowData);
             StructLikeWrapper wrapper = lazyStructLikeWrapper().set(projectedRowData);
-            return wrapper.hashCode();
+            return Math.abs(wrapper.hashCode());
         } else {
             // FlushEvent
             // SchemaChangeEvent

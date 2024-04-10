@@ -26,7 +26,9 @@ import org.apache.flink.cdc.runtime.partitioning.PartitioningEvent;
 public class PartitioningEventPartitioner implements Partitioner<Integer> {
     @Override
     public int partition(Integer target, int numPartitions) {
-        if (target >= numPartitions) {
+        if (target < 0) {
+            throw new IllegalArgumentException("Target should be greater than or equal to 0");
+        } else if (target >= numPartitions) {
             return target % numPartitions;
         }
         return target;
