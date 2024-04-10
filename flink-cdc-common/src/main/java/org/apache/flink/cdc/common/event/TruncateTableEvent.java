@@ -19,10 +19,7 @@ package org.apache.flink.cdc.common.event;
 
 import java.util.Objects;
 
-/**
- * A {@link SchemaChangeEvent} that represents an {@code DROP TABLE} DDL, which may contain the
- * lenient column type changes.
- */
+/** A {@link SchemaChangeEvent} that represents an {@code Truncate TABLE} DDL. */
 public class TruncateTableEvent implements SchemaChangeEvent {
 
     private final TableId tableId;
@@ -33,7 +30,7 @@ public class TruncateTableEvent implements SchemaChangeEvent {
 
     @Override
     public TableId tableId() {
-        return null;
+        return tableId;
     }
 
     @Override

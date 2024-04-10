@@ -21,6 +21,7 @@ import org.apache.flink.cdc.common.annotation.Internal;
 import org.apache.flink.cdc.common.event.CreateTableEvent;
 import org.apache.flink.cdc.common.event.SchemaChangeEvent;
 import org.apache.flink.cdc.common.event.TableId;
+import org.apache.flink.cdc.common.event.TruncateTableEvent;
 import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.common.utils.SchemaUtils;
 import org.apache.flink.cdc.runtime.serializer.TableIdSerializer;
@@ -99,6 +100,9 @@ public class SchemaManager {
 
     /** Apply schema change to a table. */
     public void applySchemaChange(SchemaChangeEvent schemaChangeEvent) {
+        if (schemaChangeEvent instanceof TruncateTableEvent) {
+            return;
+        }
         if (schemaChangeEvent instanceof CreateTableEvent) {
             handleCreateTableEvent(((CreateTableEvent) schemaChangeEvent));
         } else {

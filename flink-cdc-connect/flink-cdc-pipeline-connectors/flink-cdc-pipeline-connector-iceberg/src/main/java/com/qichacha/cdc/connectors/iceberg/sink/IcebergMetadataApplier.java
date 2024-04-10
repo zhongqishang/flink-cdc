@@ -43,6 +43,7 @@ import org.apache.iceberg.UpdateSchema;
 import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
+import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.flink.CatalogLoader;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
 import org.apache.iceberg.types.Type;
@@ -237,5 +238,12 @@ public class IcebergMetadataApplier implements MetadataApplier {
         TableId tableId = truncateTableEvent.tableId();
         TableIdentifier tableIdentifier = TableIdentifier.of("ods_iceberg", tableId.getTableName());
         Table loadTable = catalog.loadTable(tableIdentifier);
+        Transaction transaction = loadTable.newTransaction();
+        transaction
+                .newDelete()
+                .set("app.id", "cdc truncate trigger")
+                .deleteFromRowFilter(Expressions.alwaysTrue())
+                .commit();
+        transaction.commitTransaction();
     }
 }

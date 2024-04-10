@@ -27,6 +27,7 @@ import org.apache.flink.cdc.common.event.DropColumnEvent;
 import org.apache.flink.cdc.common.event.RenameColumnEvent;
 import org.apache.flink.cdc.common.event.SchemaChangeEvent;
 import org.apache.flink.cdc.common.event.TableId;
+import org.apache.flink.cdc.common.event.TruncateTableEvent;
 import org.apache.flink.cdc.runtime.serializer.EnumSerializer;
 import org.apache.flink.cdc.runtime.serializer.TypeSerializerSingleton;
 import org.apache.flink.core.memory.DataInputView;
@@ -100,6 +101,9 @@ public final class SchemaChangeEventSerializer extends TypeSerializerSingleton<S
         } else if (record instanceof DropColumnEvent) {
             enumSerializer.serialize(SchemaChangeEventClass.DROP_COLUMN, target);
             DropColumnEventSerializer.INSTANCE.serialize((DropColumnEvent) record, target);
+        } else if (record instanceof TruncateTableEvent) {
+            enumSerializer.serialize(SchemaChangeEventClass.TRUNCATE_TABLE, target);
+            TruncateTableEventSerializer.INSTANCE.serialize((TruncateTableEvent) record, target);
         } else {
             throw new IllegalArgumentException("Unknown schema change event: " + record);
         }
@@ -119,6 +123,8 @@ public final class SchemaChangeEventSerializer extends TypeSerializerSingleton<S
                 return RenameColumnEventSerializer.INSTANCE.deserialize(source);
             case ALTER_COLUMN_TYPE:
                 return AlterColumnTypeEventSerializer.INSTANCE.deserialize(source);
+            case TRUNCATE_TABLE:
+                return TruncateTableEventSerializer.INSTANCE.deserialize(source);
             default:
                 throw new IllegalArgumentException(
                         "Unknown schema change event class: " + schemaChangeEventClass);
@@ -156,6 +162,7 @@ public final class SchemaChangeEventSerializer extends TypeSerializerSingleton<S
         RENAME_COLUMN,
         ADD_COLUMN,
         DROP_COLUMN,
-        CREATE_TABLE;
+        CREATE_TABLE,
+        TRUNCATE_TABLE
     }
 }
