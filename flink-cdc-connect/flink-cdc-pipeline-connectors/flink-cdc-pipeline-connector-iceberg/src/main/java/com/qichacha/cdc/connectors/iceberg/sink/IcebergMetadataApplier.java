@@ -26,6 +26,7 @@ import org.apache.flink.cdc.common.event.DropColumnEvent;
 import org.apache.flink.cdc.common.event.RenameColumnEvent;
 import org.apache.flink.cdc.common.event.SchemaChangeEvent;
 import org.apache.flink.cdc.common.event.TableId;
+import org.apache.flink.cdc.common.event.TruncateTableEvent;
 import org.apache.flink.cdc.common.schema.Column;
 import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.common.sink.MetadataApplier;
@@ -84,6 +85,8 @@ public class IcebergMetadataApplier implements MetadataApplier {
             applyRenameColumn((RenameColumnEvent) schemaChangeEvent);
         } else if (schemaChangeEvent instanceof AlterColumnTypeEvent) {
             applyAlterColumn((AlterColumnTypeEvent) schemaChangeEvent);
+        } else if (schemaChangeEvent instanceof TruncateTableEvent) {
+            applyTruncateTable((TruncateTableEvent) schemaChangeEvent);
         } else {
             throw new UnsupportedOperationException(
                     "StarRocksDataSink doesn't support schema change event " + schemaChangeEvent);
@@ -228,5 +231,11 @@ public class IcebergMetadataApplier implements MetadataApplier {
         pendingUpdate.commit();
         transaction.commitTransaction();
         LOG.info("Successful to apply alter column, event: {}", alterColumnTypeEvent);
+    }
+
+    private void applyTruncateTable(TruncateTableEvent truncateTableEvent) {
+        TableId tableId = truncateTableEvent.tableId();
+        TableIdentifier tableIdentifier = TableIdentifier.of("ods_iceberg", tableId.getTableName());
+        Table loadTable = catalog.loadTable(tableIdentifier);
     }
 }

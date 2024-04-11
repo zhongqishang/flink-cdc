@@ -22,6 +22,7 @@ import org.apache.flink.cdc.common.event.AlterColumnTypeEvent;
 import org.apache.flink.cdc.common.event.DropColumnEvent;
 import org.apache.flink.cdc.common.event.RenameColumnEvent;
 import org.apache.flink.cdc.common.event.SchemaChangeEvent;
+import org.apache.flink.cdc.common.event.TruncateTableEvent;
 import org.apache.flink.cdc.common.types.DataType;
 
 import io.debezium.connector.mysql.antlr.MySqlAntlrDdlParser;
@@ -81,6 +82,13 @@ public class CustomAlterTableParserListener extends MySqlParserBaseListener {
         listeners.remove(columnDefinitionListener);
         super.exitAlterTable(ctx);
         this.currentTable = null;
+    }
+
+    @Override
+    public void enterTruncateTable(MySqlParser.TruncateTableContext ctx) {
+        TableId tableId = parser.parseQualifiedTableId(ctx.tableName().fullId());
+        changes.add(new TruncateTableEvent(toCdcTableId(tableId)));
+        super.enterTruncateTable(ctx);
     }
 
     @Override

@@ -31,7 +31,4 @@ limitations under the License.
 	<!-- target directory is not relevant for checkstyle -->
 	<suppress files="[\\/]target[\\/]" checks=".*"/>
 
-	<!-- custom code -->
-	<suppress files="com[\\/]qichacha[\\/]cdc[\\/]connectors[\\/]iceberg" checks=".*"/>
-	<suppress files="org[\\/]apache[\\/]iceberg[\\/]flink" checks=".*"/>
 </suppressions>
