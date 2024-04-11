@@ -1,10 +1,12 @@
-package com.qichacha.cdc.connectors.iceberg.sink;
+package com.qichacha.cdc.connectors.iceberg;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.cdc.common.event.Event;
+import org.apache.flink.cdc.common.event.TableId;
 import org.apache.flink.cdc.common.pipeline.PipelineOptions;
 import org.apache.flink.cdc.common.pipeline.SchemaChangeBehavior;
 import org.apache.flink.cdc.common.source.FlinkSourceProvider;
+import org.apache.flink.cdc.common.source.MetadataAccessor;
 import org.apache.flink.cdc.composer.flink.coordination.OperatorIDGenerator;
 import org.apache.flink.cdc.composer.flink.translator.SchemaOperatorTranslator;
 import org.apache.flink.cdc.connectors.mysql.factory.MySqlDataSourceFactory;
@@ -15,13 +17,16 @@ import org.apache.flink.cdc.runtime.typeutils.EventTypeInfo;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.table.api.DataTypes;
-import org.apache.flink.table.api.TableColumn;
 import org.apache.flink.table.api.TableSchema;
-import org.apache.flink.table.api.constraints.UniqueConstraint;
 
+import org.apache.flink.shaded.guava31.com.google.common.collect.Lists;
+
+import com.qichacha.cdc.connectors.iceberg.sink.CatalogPropertiesUtils;
+import com.qichacha.cdc.connectors.iceberg.sink.IcebergMetadataApplier;
+import com.qichacha.cdc.connectors.iceberg.types.utils.FlinkCdcSchemaUtil;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.Table;
 import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.flink.CatalogLoader;
@@ -29,9 +34,8 @@ import org.apache.iceberg.flink.FlinkCatalogFactory;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
 import org.apache.iceberg.flink.TableLoader;
 import org.apache.iceberg.flink.sink.FlinkEventSink;
-import org.apache.iceberg.relocated.com.google.common.collect.ImmutableList;
 
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -70,6 +74,10 @@ public class Sync {
 
         FlinkSourceProvider sourceProvider =
                 (FlinkSourceProvider) new MySqlDataSource(configFactory).getEventSourceProvider();
+
+        MetadataAccessor metadataAccessor =
+                new MySqlDataSource(configFactory).getMetadataAccessor();
+
         DataStreamSource<Event> source =
                 env.fromSource(
                         sourceProvider.getSource(),
@@ -84,38 +92,28 @@ public class Sync {
                         PipelineOptions.PIPELINE_SCHEMA_OPERATOR_UID.defaultValue());
 
         org.apache.hadoop.conf.Configuration hadoopConf = FlinkCatalogFactory.clusterHadoopConf();
-        Map<String, String> tableProps = new HashMap<>();
 
-        tableProps.put("catalog-name", "iceberg_catalog");
-        tableProps.put("catalog-database", "ods_iceberg");
-        tableProps.put("catalog-table", "local_table");
-        tableProps.put("uri", "thrift://localhost:9083");
-        tableProps.put("hive-conf-dir", "/opt/hadoop-2.10.2/etc/hadoop");
-        tableProps.put("write-format", "parquet");
-        tableProps.put("write.upsert.enabled", "true");
-        tableProps.put("overwrite-enabled", "false");
-
-        CatalogLoader catalogLoader = CatalogLoader.hive("hive", hadoopConf, tableProps);
+        Map<String, String> catalogMap = CatalogPropertiesUtils.getProperties("ods_iceberg");
+        CatalogLoader catalogLoader = CatalogLoader.hive("hive", hadoopConf, catalogMap);
         TableIdentifier tableIdentifier = TableIdentifier.of("ods_iceberg", "products");
         Catalog catalog = catalogLoader.loadCatalog();
 
-        // TODO load from iceberg or mysql
-        TableSchema tableSchema =
-                new TableSchema.Builder()
-                        .add(TableColumn.physical("id", DataTypes.INT().notNull()))
-                        .add(TableColumn.physical("name", DataTypes.VARCHAR(200).notNull()))
-                        .add(TableColumn.physical("description", DataTypes.VARCHAR(200)))
-                        .add(TableColumn.physical("weight", DataTypes.FLOAT()))
-                        .primaryKey("primary_constraint", new String[] {"id"})
-                        .build();
-
-        Schema icebergSchema = FlinkSchemaUtil.convert(tableSchema);
-
-        if (!catalog.tableExists(tableIdentifier)) {
-            catalog.createTable(tableIdentifier, icebergSchema, null, tableProps);
-        }
+        Schema icebergSchema;
 
         TableLoader tableLoader = TableLoader.fromCatalog(catalogLoader, tableIdentifier);
+        if (catalog.tableExists(tableIdentifier)) {
+            // Load schema from iceberg
+            tableLoader.open();
+            Table table = tableLoader.loadTable();
+            icebergSchema = table.schema();
+        } else {
+            // Load schema from mysql and create iceberg
+            org.apache.flink.cdc.common.schema.Schema tableSchema =
+                    metadataAccessor.getTableSchema(TableId.tableId("test", "products"));
+            icebergSchema = FlinkCdcSchemaUtil.convert(tableSchema);
+            // Default set non partition
+            catalog.createTable(tableIdentifier, icebergSchema, null, catalogMap);
+        }
 
         DataStream<Event> stream =
                 schemaOperatorTranslator.translate(
@@ -124,16 +122,9 @@ public class Sync {
         OperatorIDGenerator schemaOperatorIDGenerator =
                 new OperatorIDGenerator(schemaOperatorTranslator.getSchemaOperatorUid());
 
-        //        tableLoader.open();
-        //        Table table = tableLoader.loadTable();
-        //        Schema schema = table.schema();
-        //
-        //        TableSchema tableSchema = FlinkSchemaUtil.toSchema(schema);
-        List<String> equalityColumns =
-                tableSchema
-                        .getPrimaryKey()
-                        .map(UniqueConstraint::getColumns)
-                        .orElseGet(ImmutableList::of);
+        ArrayList<String> equalityColumns =
+                Lists.newArrayList(icebergSchema.identifierFieldNames());
+        TableSchema tableSchema = FlinkSchemaUtil.toSchema(FlinkSchemaUtil.convert(icebergSchema));
 
         // Add sink
         FlinkEventSink.forEvent(stream)
@@ -147,7 +138,7 @@ public class Sync {
                 // .flinkConf(readableConfig)
                 .append();
 
-        env.execute("local");
+        env.execute(String.format("Flink CDC sync %s", tableIdentifier));
     }
 
     public static String getServerId(int parallelism) {
@@ -156,7 +147,7 @@ public class Sync {
         return serverId + "-" + (serverId + parallelism);
     }
 
-    static PartitionSpec toPartitionSpec(List<String> partitionKeys, Schema icebergSchema) {
+    public static PartitionSpec toPartitionSpec(List<String> partitionKeys, Schema icebergSchema) {
         PartitionSpec.Builder builder = PartitionSpec.builderFor(icebergSchema);
         partitionKeys.forEach(builder::identity);
         return builder.build();

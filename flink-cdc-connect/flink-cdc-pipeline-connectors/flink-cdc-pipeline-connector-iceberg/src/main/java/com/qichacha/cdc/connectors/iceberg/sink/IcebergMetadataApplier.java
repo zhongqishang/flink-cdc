@@ -25,7 +25,6 @@ import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.flink.CatalogLoader;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
-import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
 import org.apache.iceberg.types.Type;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,7 +32,7 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Map;
 
-import static com.qichacha.cdc.connectors.iceberg.sink.Sync.toPartitionSpec;
+import static com.qichacha.cdc.connectors.iceberg.Sync.toPartitionSpec;
 
 /** A {@code MetadataApplier} that applies metadata changes to Iceberg. */
 public class IcebergMetadataApplier implements MetadataApplier {
@@ -84,18 +83,12 @@ public class IcebergMetadataApplier implements MetadataApplier {
         PartitionSpec spec =
                 toPartitionSpec(
                         Lists.newArrayList(icebergSchema.identifierFieldNames()), icebergSchema);
-        ImmutableMap.Builder<String, String> properties = ImmutableMap.builder();
-
-        properties.put("catalog-database", "ods_iceberg");
-        properties.put("catalog-table", tableId.getTableName());
-        properties.put("uri", "thrift://localhost:9083");
-        properties.put("hive-conf-dir", "/opt/hadoop-2.10.2/etc/hadoop");
-        properties.put("write-format", "parquet");
-        properties.put("write.upsert.enabled", "true");
-        properties.put("overwrite-enabled", "false");
-
         try {
-            catalog.createTable(tableIdentifier, icebergSchema, spec, properties.build());
+            catalog.createTable(
+                    tableIdentifier,
+                    icebergSchema,
+                    spec,
+                    CatalogPropertiesUtils.getProperties("ods_iceberg"));
         } catch (AlreadyExistsException e) {
             LOG.warn("Failed to apply add column, event: {}", createTableEvent, e);
         }
