@@ -69,9 +69,12 @@ public class MySqlValidator implements Validator {
     public void validate() {
         try (JdbcConnection connection = createJdbcConnection(sourceConfig, dbzProperties)) {
             checkVersion(connection);
-            checkBinlogFormat(connection);
-            checkBinlogRowImage(connection);
-            checkBinlogRowValueOptions(connection);
+            if (!sourceConfig.getStartupOptions().isSnapshotOnly()
+                    || !sourceConfig.isSkipSnapshotBackfill()) {
+                checkBinlogFormat(connection);
+                checkBinlogRowImage(connection);
+                checkBinlogRowValueOptions(connection);
+            }
             checkTimeZone(connection);
         } catch (SQLException ex) {
             throw new TableException(
