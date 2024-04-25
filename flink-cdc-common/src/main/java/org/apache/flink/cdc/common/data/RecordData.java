@@ -19,6 +19,12 @@ package org.apache.flink.cdc.common.data;
 
 import org.apache.flink.cdc.common.annotation.PublicEvolving;
 import org.apache.flink.cdc.common.types.DataType;
+import org.apache.flink.table.types.logical.DecimalType;
+import org.apache.flink.table.types.logical.LocalZonedTimestampType;
+import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.table.types.logical.TimestampType;
+import org.apache.flink.table.types.logical.ZonedTimestampType;
 
 import javax.annotation.Nullable;
 
@@ -236,6 +242,97 @@ public interface RecordData {
                 throw new IllegalArgumentException();
         }
         if (!fieldType.isNullable()) {
+            return fieldGetter;
+        }
+        return row -> {
+            if (row.isNullAt(fieldPos)) {
+                return null;
+            }
+            return fieldGetter.getFieldOrNull(row);
+        };
+    }
+
+    /**
+     * Add with iceberg sink Creates an accessor for getting elements in an internal RecordData
+     * structure at the given position.
+     *
+     * @param logicalType the element type of the RecordData
+     * @param fieldPos the element position of the RecordData
+     */
+    static RecordData.FieldGetter createFieldGetter(LogicalType logicalType, int fieldPos) {
+        final RecordData.FieldGetter fieldGetter;
+        // ordered by type root definition
+        switch (logicalType.getTypeRoot()) {
+            case CHAR:
+            case VARCHAR:
+                fieldGetter = record -> record.getString(fieldPos);
+                break;
+            case BOOLEAN:
+                fieldGetter = record -> record.getBoolean(fieldPos);
+                break;
+            case BINARY:
+            case VARBINARY:
+                fieldGetter = record -> record.getBinary(fieldPos);
+                break;
+            case DECIMAL:
+                // Fix iceberg connector
+                DecimalType decimalType = (DecimalType) logicalType;
+                fieldGetter =
+                        record ->
+                                record.getDecimal(
+                                        fieldPos,
+                                        decimalType.getPrecision(),
+                                        decimalType.getScale());
+                break;
+            case TINYINT:
+                fieldGetter = record -> record.getByte(fieldPos);
+                break;
+            case SMALLINT:
+                fieldGetter = record -> record.getShort(fieldPos);
+                break;
+            case INTEGER:
+            case DATE:
+            case TIME_WITHOUT_TIME_ZONE:
+                fieldGetter = record -> record.getInt(fieldPos);
+                break;
+            case BIGINT:
+                fieldGetter = record -> record.getLong(fieldPos);
+                break;
+            case FLOAT:
+                fieldGetter = record -> record.getFloat(fieldPos);
+                break;
+            case DOUBLE:
+                fieldGetter = record -> record.getDouble(fieldPos);
+                break;
+            case TIMESTAMP_WITHOUT_TIME_ZONE:
+                // Fix iceberg connector
+                TimestampType timestampType = (TimestampType) logicalType;
+                fieldGetter = record -> record.getTimestamp(fieldPos, timestampType.getPrecision());
+                break;
+            case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
+                // Fix iceberg connector
+                LocalZonedTimestampType lzTs = (LocalZonedTimestampType) logicalType;
+                fieldGetter =
+                        record -> record.getLocalZonedTimestampData(fieldPos, lzTs.getPrecision());
+                break;
+            case TIMESTAMP_WITH_TIME_ZONE:
+                ZonedTimestampType zTs = (ZonedTimestampType) logicalType;
+                fieldGetter = record -> record.getZonedTimestamp(fieldPos, zTs.getPrecision());
+                break;
+            case ARRAY:
+                fieldGetter = record -> record.getArray(fieldPos);
+                break;
+            case MAP:
+                fieldGetter = record -> record.getMap(fieldPos);
+                break;
+            case ROW:
+                RowType rowType = (RowType) logicalType;
+                fieldGetter = row -> row.getRow(fieldPos, rowType.getFieldCount());
+                break;
+            default:
+                throw new IllegalArgumentException();
+        }
+        if (!logicalType.isNullable()) {
             return fieldGetter;
         }
         return row -> {

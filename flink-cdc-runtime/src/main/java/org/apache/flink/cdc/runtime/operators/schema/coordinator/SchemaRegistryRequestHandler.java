@@ -191,6 +191,12 @@ public class SchemaRegistryRequestHandler implements Closeable {
             LOG.info(
                     "All sink subtask have flushed for table {}. Start to apply schema change.",
                     tableId.toString());
+            if (pendingSchemaChanges.isEmpty()) {
+                // TODO
+                flushedSinkWriters.clear();
+                LOG.info("Not found pending schema changes.");
+                return;
+            }
             PendingSchemaChange waitFlushSuccess = pendingSchemaChanges.get(0);
             schemaChangeThreadPool.submit(
                     () -> applySchemaChange(tableId, waitFlushSuccess.derivedSchemaChangeEvents));
