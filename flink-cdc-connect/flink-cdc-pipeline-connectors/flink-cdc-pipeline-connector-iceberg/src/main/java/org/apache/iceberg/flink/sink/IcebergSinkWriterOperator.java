@@ -21,7 +21,6 @@ package org.apache.iceberg.flink.sink;
 
 import org.apache.flink.cdc.common.data.DecimalData;
 import org.apache.flink.cdc.common.data.RecordData;
-import org.apache.flink.cdc.common.data.TimestampData;
 import org.apache.flink.cdc.common.event.DataChangeEvent;
 import org.apache.flink.cdc.common.event.Event;
 import org.apache.flink.cdc.common.event.FlushEvent;
@@ -30,8 +29,6 @@ import org.apache.flink.cdc.common.event.SchemaChangeEvent;
 import org.apache.flink.cdc.common.event.TableId;
 import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.common.types.DecimalType;
-import org.apache.flink.cdc.common.types.LocalZonedTimestampType;
-import org.apache.flink.cdc.common.types.TimestampType;
 import org.apache.flink.cdc.runtime.operators.sink.SchemaEvolutionClient;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.StateInitializationContext;
@@ -185,7 +182,7 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<WriteResul
         if (latestSchema.isPresent()) {
             schema = latestSchema.get();
             LOG.info("Get latest schema is {}.", schema);
-            DataType dataType = DataTypeUtils.toFlinkDataType(schema.toRowDataType());
+            DataType dataType = DataTypeUtils.toFlinkQccDataType(schema.toRowDataType());
 
             TaskWriterFactory<RowData> taskWriterFactory =
                     new EventTaskWriterFactory(
@@ -274,13 +271,19 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<WriteResul
                 return RecordData::getFloat;
             case DOUBLE:
                 return RecordData::getDouble;
+            case BOOLEAN:
+                return RecordData::getBoolean;
             case CHAR:
             case VARCHAR:
+            case DATE:
+            case TIME_WITHOUT_TIME_ZONE:
+            case TIMESTAMP_WITHOUT_TIME_ZONE:
+            case TIMESTAMP_WITH_TIME_ZONE:
+            case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
                 return (row, pos) -> StringData.fromString(row.getString(pos).toString());
             case BINARY:
             case VARBINARY:
                 return RecordData::getBinary;
-
             case DECIMAL:
                 DecimalType decimalType = (DecimalType) dataType;
                 int precision = decimalType.getPrecision();
@@ -290,27 +293,24 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<WriteResul
                                 row.getDecimal(pos, precision, scale).toBigDecimal(),
                                 precision,
                                 scale);
-
-            case TIME_WITHOUT_TIME_ZONE:
-                // Time in RowData is in milliseconds (Integer), while iceberg's time is
-                // microseconds (Long).
-                return (row, pos) -> ((long) row.getInt(pos)) * 1_000;
-
-            case TIMESTAMP_WITHOUT_TIME_ZONE:
-                TimestampType timestampType = (TimestampType) dataType;
-                return (row, pos) ->
-                        org.apache.flink.table.data.TimestampData.fromEpochMillis(
-                                row.getTimestamp(pos, timestampType.getPrecision())
-                                        .getMillisecond());
-
-            case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
-                LocalZonedTimestampType lzTs = (LocalZonedTimestampType) dataType;
-                return (row, pos) -> {
-                    TimestampData timestampData = row.getTimestamp(pos, lzTs.getPrecision());
-                    return org.apache.flink.table.data.TimestampData.fromEpochMillis(
-                            timestampData.getMillisecond());
-                };
-
+                // case TIME_WITHOUT_TIME_ZONE:
+                //     // Time in RowData is in milliseconds (Integer), while iceberg's time is
+                //     // microseconds (Long).
+                //     return (row, pos) -> ((long) row.getInt(pos)) * 1_000;
+                // case TIMESTAMP_WITHOUT_TIME_ZONE:
+                //     TimestampType timestampType = (TimestampType) dataType;
+                //     return (row, pos) ->
+                //             org.apache.flink.table.data.TimestampData.fromEpochMillis(
+                //                     row.getTimestamp(pos, timestampType.getPrecision())
+                //                             .getMillisecond());
+                // case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
+                //     LocalZonedTimestampType lzTs = (LocalZonedTimestampType) dataType;
+                //     return (row, pos) -> {
+                //         TimestampData timestampData = row.getTimestamp(pos, lzTs.getPrecision());
+                //         return org.apache.flink.table.data.TimestampData.fromEpochMillis(
+                //                 timestampData.getMillisecond());
+                //     };
+                // case ARRAY:
             case ROW:
                 org.apache.flink.cdc.common.types.RowType rowType =
                         (org.apache.flink.cdc.common.types.RowType) dataType;

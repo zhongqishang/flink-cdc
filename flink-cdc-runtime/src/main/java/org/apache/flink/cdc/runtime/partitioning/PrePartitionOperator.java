@@ -94,6 +94,10 @@ public class PrePartitionOperator extends AbstractStreamOperator<PartitioningEve
     }
 
     private void partitionBy(DataChangeEvent dataChangeEvent) throws Exception {
+        TableId tableId = dataChangeEvent.tableId();
+        if (!cachedHashFunctions.asMap().containsKey(tableId)) {
+            cachedHashFunctions.put(tableId, recreateHashFunction(tableId));
+        }
         output.collect(
                 new StreamRecord<>(
                         new PartitioningEvent(

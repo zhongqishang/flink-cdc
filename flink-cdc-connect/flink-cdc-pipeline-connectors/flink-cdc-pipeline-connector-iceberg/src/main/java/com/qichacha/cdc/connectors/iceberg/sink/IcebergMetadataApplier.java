@@ -57,10 +57,14 @@ import java.util.stream.Collectors;
 
 import static com.qichacha.cdc.connectors.iceberg.Sync.toPartitionSpec;
 
-/** A {@code MetadataApplier} that applies metadata changes to Iceberg. */
+/**
+ * A {@code MetadataApplier} that applies metadata changes to Iceberg. Support primary key table
+ * only.
+ */
 public class IcebergMetadataApplier implements MetadataApplier {
-    private static final long serialVersionUID = 1L;
+
     private static final Logger LOG = LoggerFactory.getLogger(IcebergMetadataApplier.class);
+
     private final CatalogLoader catalogLoader;
     private transient Catalog catalog;
     private boolean isOpened = false;
@@ -76,21 +80,25 @@ public class IcebergMetadataApplier implements MetadataApplier {
             isOpened = true;
         }
 
-        if (schemaChangeEvent instanceof CreateTableEvent) {
-            applyCreateTable((CreateTableEvent) schemaChangeEvent);
-        } else if (schemaChangeEvent instanceof AddColumnEvent) {
-            applyAddColumn((AddColumnEvent) schemaChangeEvent);
-        } else if (schemaChangeEvent instanceof DropColumnEvent) {
-            applyDropColumn((DropColumnEvent) schemaChangeEvent);
-        } else if (schemaChangeEvent instanceof RenameColumnEvent) {
-            applyRenameColumn((RenameColumnEvent) schemaChangeEvent);
-        } else if (schemaChangeEvent instanceof AlterColumnTypeEvent) {
-            applyAlterColumn((AlterColumnTypeEvent) schemaChangeEvent);
-        } else if (schemaChangeEvent instanceof TruncateTableEvent) {
-            applyTruncateTable((TruncateTableEvent) schemaChangeEvent);
-        } else {
-            throw new UnsupportedOperationException(
-                    "StarRocksDataSink doesn't support schema change event " + schemaChangeEvent);
+        try {
+            if (schemaChangeEvent instanceof CreateTableEvent) {
+                applyCreateTable((CreateTableEvent) schemaChangeEvent);
+            } else if (schemaChangeEvent instanceof AddColumnEvent) {
+                applyAddColumn((AddColumnEvent) schemaChangeEvent);
+            } else if (schemaChangeEvent instanceof DropColumnEvent) {
+                applyDropColumn((DropColumnEvent) schemaChangeEvent);
+            } else if (schemaChangeEvent instanceof RenameColumnEvent) {
+                applyRenameColumn((RenameColumnEvent) schemaChangeEvent);
+            } else if (schemaChangeEvent instanceof AlterColumnTypeEvent) {
+                applyAlterColumn((AlterColumnTypeEvent) schemaChangeEvent);
+            } else if (schemaChangeEvent instanceof TruncateTableEvent) {
+                applyTruncateTable((TruncateTableEvent) schemaChangeEvent);
+            } else {
+                throw new UnsupportedOperationException(
+                        "IcebergDataSink doesn't support schema change event " + schemaChangeEvent);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -98,8 +106,9 @@ public class IcebergMetadataApplier implements MetadataApplier {
         TableId tableId = createTableEvent.tableId();
         Schema schema = createTableEvent.getSchema();
         TableIdentifier tableIdentifier = TableIdentifier.of("ods_iceberg", tableId.getTableName());
+
+        // validate schema
         if (catalog.tableExists(tableIdentifier)) {
-            // validate schema
             Table table = catalog.loadTable(tableIdentifier);
             Types.StructType struct = table.schema().asStruct();
             for (String columnName : createTableEvent.getSchema().getColumnNames()) {
@@ -121,9 +130,9 @@ public class IcebergMetadataApplier implements MetadataApplier {
                     spec,
                     CatalogPropertiesUtils.getProperties("ods_iceberg"));
         } catch (AlreadyExistsException e) {
-            LOG.warn("Failed to apply add column, event: {}", createTableEvent, e);
+            LOG.warn("Failed to apply create table, event: {}", createTableEvent, e);
         }
-        LOG.info("Successful to apply add column, event: {}", createTableEvent);
+        LOG.info("Successful to apply create table, event: {}", createTableEvent);
     }
 
     private void applyAddColumn(AddColumnEvent addColumnEvent) {
@@ -152,7 +161,7 @@ public class IcebergMetadataApplier implements MetadataApplier {
             Column column = columnWithPosition.getAddColumn();
             Type icebergType =
                     FlinkSchemaUtil.convert(
-                            DataTypeUtils.toFlinkDataType(column.getType()).getLogicalType());
+                            DataTypeUtils.toFlinkQccDataType(column.getType()).getLogicalType());
             pendingUpdate.addColumn(column.getName(), icebergType);
         }
         pendingUpdate.commit();
@@ -224,7 +233,7 @@ public class IcebergMetadataApplier implements MetadataApplier {
             String columnName = renameColumn.getKey();
             Type icebergType =
                     FlinkSchemaUtil.convert(
-                            DataTypeUtils.toFlinkDataType(renameColumn.getValue())
+                            DataTypeUtils.toFlinkQccDataType(renameColumn.getValue())
                                     .getLogicalType());
             pendingUpdate.updateColumn(columnName, icebergType.asPrimitiveType());
             pendingUpdate.makeColumnOptional(columnName);
