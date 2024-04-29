@@ -105,7 +105,8 @@ public class IcebergMetadataApplier implements MetadataApplier {
     private void applyCreateTable(CreateTableEvent createTableEvent) {
         TableId tableId = createTableEvent.tableId();
         Schema schema = createTableEvent.getSchema();
-        TableIdentifier tableIdentifier = TableIdentifier.of("ods_iceberg", tableId.getTableName());
+        TableIdentifier tableIdentifier =
+                TableIdentifier.of(tableId.getSchemaName(), tableId.getTableName());
 
         // validate schema
         if (catalog.tableExists(tableIdentifier)) {
@@ -128,7 +129,7 @@ public class IcebergMetadataApplier implements MetadataApplier {
                     tableIdentifier,
                     icebergSchema,
                     spec,
-                    CatalogPropertiesUtils.getProperties("ods_iceberg"));
+                    CatalogPropertiesUtils.getProperties(tableId.getSchemaName()));
         } catch (AlreadyExistsException e) {
             LOG.warn("Failed to apply create table, event: {}", createTableEvent, e);
         }
@@ -137,7 +138,8 @@ public class IcebergMetadataApplier implements MetadataApplier {
 
     private void applyAddColumn(AddColumnEvent addColumnEvent) {
         TableId tableId = addColumnEvent.tableId();
-        TableIdentifier tableIdentifier = TableIdentifier.of("ods_iceberg", tableId.getTableName());
+        TableIdentifier tableIdentifier =
+                TableIdentifier.of(tableId.getSchemaName(), tableId.getTableName());
         Table loadTable = catalog.loadTable(tableIdentifier);
 
         // Filter not exists column
@@ -171,7 +173,8 @@ public class IcebergMetadataApplier implements MetadataApplier {
 
     private void applyDropColumn(DropColumnEvent dropColumnEvent) {
         TableId tableId = dropColumnEvent.tableId();
-        TableIdentifier tableIdentifier = TableIdentifier.of("ods_iceberg", tableId.getTableName());
+        TableIdentifier tableIdentifier =
+                TableIdentifier.of(tableId.getSchemaName(), tableId.getTableName());
         Table loadTable = catalog.loadTable(tableIdentifier);
         Transaction transaction = loadTable.newTransaction();
         UpdateSchema pendingUpdate = transaction.updateSchema();
@@ -192,7 +195,8 @@ public class IcebergMetadataApplier implements MetadataApplier {
 
     private void applyRenameColumn(RenameColumnEvent renameColumnEvent) {
         TableId tableId = renameColumnEvent.tableId();
-        TableIdentifier tableIdentifier = TableIdentifier.of("ods_iceberg", tableId.getTableName());
+        TableIdentifier tableIdentifier =
+                TableIdentifier.of(tableId.getSchemaName(), tableId.getTableName());
         Table loadTable = catalog.loadTable(tableIdentifier);
         Transaction transaction = loadTable.newTransaction();
         UpdateSchema pendingUpdate = transaction.updateSchema();
@@ -215,7 +219,8 @@ public class IcebergMetadataApplier implements MetadataApplier {
 
     private void applyAlterColumn(AlterColumnTypeEvent alterColumnTypeEvent) {
         TableId tableId = alterColumnTypeEvent.tableId();
-        TableIdentifier tableIdentifier = TableIdentifier.of("ods_iceberg", tableId.getTableName());
+        TableIdentifier tableIdentifier =
+                TableIdentifier.of(tableId.getSchemaName(), tableId.getTableName());
         Table loadTable = catalog.loadTable(tableIdentifier);
         Transaction transaction = loadTable.newTransaction();
         UpdateSchema pendingUpdate = transaction.updateSchema();
@@ -245,7 +250,8 @@ public class IcebergMetadataApplier implements MetadataApplier {
 
     private void applyTruncateTable(TruncateTableEvent truncateTableEvent) {
         TableId tableId = truncateTableEvent.tableId();
-        TableIdentifier tableIdentifier = TableIdentifier.of("ods_iceberg", tableId.getTableName());
+        TableIdentifier tableIdentifier =
+                TableIdentifier.of(tableId.getSchemaName(), tableId.getTableName());
         Table loadTable = catalog.loadTable(tableIdentifier);
         Transaction transaction = loadTable.newTransaction();
         transaction

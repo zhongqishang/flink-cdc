@@ -104,6 +104,10 @@ public class SchemaRegistryRequestHandler implements Closeable {
         isSchemaChangeApplying = true;
         schemaChangeException = null;
         try {
+            // TODO
+            if (pendingSchemaChanges.isEmpty()) {
+                return;
+            }
             for (SchemaChangeEvent changeEvent : derivedSchemaChangeEvents) {
                 metadataApplier.applySchemaChange(changeEvent);
                 LOG.debug("Apply schema change {} to table {}.", changeEvent, tableId);

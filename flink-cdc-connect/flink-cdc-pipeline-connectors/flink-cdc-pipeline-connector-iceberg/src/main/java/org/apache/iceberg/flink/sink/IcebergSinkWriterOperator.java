@@ -21,6 +21,7 @@ package org.apache.iceberg.flink.sink;
 
 import org.apache.flink.cdc.common.data.DecimalData;
 import org.apache.flink.cdc.common.data.RecordData;
+import org.apache.flink.cdc.common.event.CreateTableEvent;
 import org.apache.flink.cdc.common.event.DataChangeEvent;
 import org.apache.flink.cdc.common.event.Event;
 import org.apache.flink.cdc.common.event.FlushEvent;
@@ -29,6 +30,7 @@ import org.apache.flink.cdc.common.event.SchemaChangeEvent;
 import org.apache.flink.cdc.common.event.TableId;
 import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.common.types.DecimalType;
+import org.apache.flink.cdc.common.utils.SchemaUtils;
 import org.apache.flink.cdc.runtime.operators.sink.SchemaEvolutionClient;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.StateInitializationContext;
@@ -43,35 +45,35 @@ import org.apache.flink.streaming.runtime.tasks.StreamTask;
 import org.apache.flink.table.data.GenericRowData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.StringData;
-import org.apache.flink.table.types.DataType;
-import org.apache.flink.table.types.logical.RowType;
-import org.apache.flink.table.types.logical.utils.LogicalTypeUtils;
 import org.apache.flink.types.RowKind;
 
-import com.qichacha.cdc.connectors.iceberg.types.utils.DataTypeUtils;
+import org.apache.flink.shaded.guava31.com.google.common.collect.Lists;
+
 import org.apache.iceberg.FileFormat;
 import org.apache.iceberg.Table;
-import org.apache.iceberg.io.WriteResult;
-import org.apache.iceberg.util.SerializableSupplier;
+import org.apache.iceberg.catalog.Catalog;
+import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.flink.CatalogLoader;
+import org.apache.iceberg.flink.FlinkSchemaUtil;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** Iceberg Sink Writer Operator. */
-public class IcebergSinkWriterOperator extends AbstractStreamOperator<WriteResult>
-        implements OneInputStreamOperator<Event, WriteResult>, BoundedOneInput {
+public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWriteResult>
+        implements OneInputStreamOperator<Event, TableWriteResult>, BoundedOneInput {
+
+    private final CatalogLoader catalogLoader;
+    private transient Catalog catalog;
 
     private SchemaEvolutionClient schemaEvolutionClient;
 
     private final OperatorID schemaOperatorID;
-    private final SerializableSupplier<Table> tableSupplier;
-    private final RowType flinkRowType;
-    private final List<Integer> equalityFieldIds;
-
-    private final IcebergEventStreamWriter<RowData> copySinkWriter;
-    private volatile Schema schema;
+    private final Map<TableId, Schema> schemas = new ConcurrentHashMap<>();
+    private final Map<TableId, Table> tables = new ConcurrentHashMap<>();
+    private final Map<TableId, IcebergEventStreamWriter<RowData>> writes =
+            new ConcurrentHashMap<>();
     private final long targetFileSizeBytes;
     private final FileFormat format;
     private final Map<String, String> writeProperties;
@@ -81,46 +83,26 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<WriteResul
 
     public IcebergSinkWriterOperator(
             OperatorID schemaOperatorID,
-            SerializableSupplier<Table> tableSupplier,
-            RowType flinkRowType,
-            List<Integer> equalityFieldIds,
+            CatalogLoader catalogLoader,
             long targetFileSizeBytes,
             FileFormat format,
             Map<String, String> writeProperties,
             boolean upsertMode) {
         this.schemaOperatorID = schemaOperatorID;
-        this.tableSupplier = tableSupplier;
-        this.flinkRowType = flinkRowType;
-        this.equalityFieldIds = equalityFieldIds;
+        this.catalogLoader = catalogLoader;
         this.targetFileSizeBytes = targetFileSizeBytes;
         this.format = format;
         this.writeProperties = writeProperties;
         this.upsertMode = upsertMode;
         this.chainingStrategy = ChainingStrategy.ALWAYS;
-
-        // TODO restore schema 丢失
-        // TODO 优先级，状态 > 目标表加载
-        // this.schema =
-        Table initTable = tableSupplier.get();
-        TaskWriterFactory<RowData> taskWriterFactory =
-                new EventTaskWriterFactory(
-                        tableSupplier,
-                        flinkRowType,
-                        targetFileSizeBytes,
-                        format,
-                        writeProperties,
-                        equalityFieldIds,
-                        upsertMode);
-        this.copySinkWriter = new IcebergEventStreamWriter<>(initTable.name(), taskWriterFactory);
     }
 
     @Override
     public void setup(
             StreamTask<?, ?> containingTask,
             StreamConfig config,
-            Output<StreamRecord<WriteResult>> output) {
+            Output<StreamRecord<TableWriteResult>> output) {
         super.setup(containingTask, config, output);
-        this.copySinkWriter.setup(containingTask, config, output);
         this.schemaEvolutionClient =
                 new SchemaEvolutionClient(
                         getContainingTask().getEnvironment().getOperatorCoordinatorEventGateway(),
@@ -130,19 +112,23 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<WriteResul
     @Override
     public void open() throws Exception {
         super.open();
-        copySinkWriter.open();
+        catalog = catalogLoader.loadCatalog();
     }
 
     @Override
     public void initializeState(StateInitializationContext context) throws Exception {
         super.initializeState(context);
-        copySinkWriter.initializeState(context);
+        for (IcebergEventStreamWriter<RowData> copySinkWriter : writes.values()) {
+            copySinkWriter.initializeState(context);
+        }
         schemaEvolutionClient.registerSubtask(getRuntimeContext().getIndexOfThisSubtask());
     }
 
     @Override
     public void prepareSnapshotPreBarrier(long checkpointId) throws Exception {
-        copySinkWriter.prepareSnapshotPreBarrier(checkpointId);
+        for (IcebergEventStreamWriter<RowData> copySinkWriter : writes.values()) {
+            copySinkWriter.prepareSnapshotPreBarrier(checkpointId);
+        }
     }
 
     @Override
@@ -151,61 +137,91 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<WriteResul
         if (event instanceof SchemaChangeEvent) {
             LOG.info("SchemaChangeEvent {}", event);
             TableId tableId = ((SchemaChangeEvent) event).tableId();
+            if (event instanceof CreateTableEvent) {
+                CreateTableEvent createTableEvent = (CreateTableEvent) event;
+                schemas.put(createTableEvent.tableId(), createTableEvent.getSchema());
+            } else {
+                SchemaChangeEvent schemaChangeEvent = (SchemaChangeEvent) event;
+                schemas.put(
+                        schemaChangeEvent.tableId(),
+                        SchemaUtils.applySchemaChangeEvent(
+                                schemas.get(schemaChangeEvent.tableId()), schemaChangeEvent));
+                IcebergEventStreamWriter<RowData> remove = writes.remove(tableId);
+                if (remove != null) {
+                    remove.flush();
+                    remove.close();
+                }
+            }
             schemaEvolutionClient.notifyFlushSuccess(
                     getRuntimeContext().getIndexOfThisSubtask(), tableId);
         } else if (event instanceof FlushEvent) {
             TableId tableId = ((FlushEvent) event).getTableId();
-            copySinkWriter.flush();
+            IcebergEventStreamWriter<RowData> streamWriter = writes.get(tableId);
+            if (streamWriter == null) {
+                LOG.warn("No IcebergEventStreamWriter found for table {}", tableId);
+            } else {
+                streamWriter.flush();
+            }
             schemaEvolutionClient.notifyFlushSuccess(
                     getRuntimeContext().getIndexOfThisSubtask(), tableId);
-            LOG.debug(
+            LOG.info(
                     "Notify Flush Success, SubtaskId is {}",
                     getRuntimeContext().getIndexOfThisSubtask());
 
         } else if (event instanceof DataChangeEvent) {
             TableId tableId = ((DataChangeEvent) event).tableId();
-            if (!copySinkWriter.hasWriter()) {
+            IcebergEventStreamWriter<RowData> streamWriter =
+                    writes.computeIfAbsent(tableId, k -> createCopySinkWriter(tableId));
+            if (!streamWriter.hasWriter()) {
                 recreate(tableId);
             }
             DataChangeEvent dataChangeEvent = (DataChangeEvent) event;
-            serializerRecord(dataChangeEvent);
+            serializerRecord(streamWriter, dataChangeEvent);
         }
     }
 
-    void refreshSchema(TableId tableId) throws Exception {
-        Optional<Schema> latestSchema = schemaEvolutionClient.getLatestSchema(tableId);
-        latestSchema.ifPresent(value -> schema = value);
+    private IcebergEventStreamWriter<RowData> createCopySinkWriter(TableId tableId) {
+        IcebergEventStreamWriter<RowData> streamWriter =
+                new IcebergEventStreamWriter<>(TableIdentifier.parse(tableId.identifier()));
+        streamWriter.setTaskWriterFactory(createTaskWriterFactory(tableId));
+        streamWriter.setup(getContainingTask(), getOperatorConfig(), output);
+        streamWriter.open();
+        return streamWriter;
+    }
+
+    private TaskWriterFactory<RowData> createTaskWriterFactory(TableId tableId) {
+        Table table =
+                tables.computeIfAbsent(
+                        tableId,
+                        t -> catalog.loadTable(TableIdentifier.parse(tableId.identifier())));
+        table.refresh();
+        List<Integer> equalityFieldIds = Lists.newArrayList(table.schema().identifierFieldIds());
+
+        return new EventTaskWriterFactory(
+                table,
+                FlinkSchemaUtil.convert(table.schema()),
+                targetFileSizeBytes,
+                format,
+                writeProperties,
+                equalityFieldIds,
+                upsertMode);
     }
 
     void recreate(TableId tableId) throws Exception {
-        Optional<Schema> latestSchema = schemaEvolutionClient.getLatestSchema(tableId);
-        if (latestSchema.isPresent()) {
-            schema = latestSchema.get();
-            LOG.info("Get latest schema is {}.", schema);
-            DataType dataType = DataTypeUtils.toFlinkQccDataType(schema.toRowDataType());
-
-            TaskWriterFactory<RowData> taskWriterFactory =
-                    new EventTaskWriterFactory(
-                            tableSupplier,
-                            LogicalTypeUtils.toRowType(dataType.getLogicalType()),
-                            targetFileSizeBytes,
-                            format,
-                            writeProperties,
-                            equalityFieldIds,
-                            upsertMode);
-            copySinkWriter.schemaEvolution(taskWriterFactory);
-        } else {
-            throw new RuntimeException(
-                    "Could not find schema message from SchemaRegistry for " + tableId);
-        }
+        Schema schema = schemas.get(tableId);
+        LOG.info("Recreate writer schema is {}.", schema);
+        writes.get(tableId).setTaskWriterFactory(createTaskWriterFactory(tableId));
     }
 
     /**
      * TODO before after partition changed situation will be not collect. Add repartition operator
      * in front of this writer
      */
-    private void serializerRecord(DataChangeEvent dataChangeEvent) throws Exception {
+    private void serializerRecord(
+            IcebergEventStreamWriter<RowData> streamWriter, DataChangeEvent dataChangeEvent)
+            throws Exception {
         OperationType op = dataChangeEvent.op();
+        TableId tableId = dataChangeEvent.tableId();
         switch (op) {
             case UPDATE:
             case REPLACE:
@@ -213,12 +229,13 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<WriteResul
                 // TODO validate schema
                 // Kafka multiple partitions duo to not in strict order
                 RecordData after = dataChangeEvent.after();
-                RowData rowData = serializerRecord(RowKind.INSERT, after);
-                copySinkWriter.processElement(new StreamRecord<>(rowData));
+                RowData rowData = serializerRecord(tableId, RowKind.INSERT, after);
+                streamWriter.processElement(new StreamRecord<>(rowData));
                 break;
             case DELETE:
-                RowData deleteRowData = serializerRecord(RowKind.DELETE, dataChangeEvent.before());
-                copySinkWriter.processElement(new StreamRecord<>(deleteRowData));
+                RowData deleteRowData =
+                        serializerRecord(tableId, RowKind.DELETE, dataChangeEvent.before());
+                streamWriter.processElement(new StreamRecord<>(deleteRowData));
                 break;
             default:
                 throw new UnsupportedOperationException("Unsupported Operation " + op);
@@ -235,8 +252,13 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<WriteResul
         return wrapIntoNullableConverter(createNotNullConverter(type));
     }
 
-    private RowData serializerRecord(RowKind rowKind, RecordData recordData) {
+    private RowData serializerRecord(TableId tableId, RowKind rowKind, RecordData recordData) {
         GenericRowData rowData = new GenericRowData(rowKind, recordData.getArity());
+        // TODO 不能解决 failover 的问题，需要引入 lastSchema 和 routeRef
+        if (!schemas.containsKey(tableId)) {
+            throw new RuntimeException("Table " + tableId + " does not exist");
+        }
+        Schema schema = schemas.get(tableId);
         List<org.apache.flink.cdc.common.types.DataType> columnDataTypes =
                 schema.getColumnDataTypes();
         for (int i = 0; i < schema.getColumnCount(); i++) {
@@ -249,7 +271,9 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<WriteResul
 
     @Override
     public void endInput() throws Exception {
-        copySinkWriter.endInput();
+        for (IcebergEventStreamWriter<RowData> writer : writes.values()) {
+            writer.endInput();
+        }
     }
 
     private interface RecordDataGetter<T> {
@@ -322,16 +346,12 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<WriteResul
     }
 
     private static RecordDataGetter<?> wrapIntoNullableConverter(RecordDataGetter<?> converter) {
-        return new RecordDataGetter<Object>() {
-            private static final long serialVersionUID = 1L;
-
-            @Override
-            public Object get(RecordData data, int pos) {
-                if (data.isNullAt(pos)) {
-                    return null;
-                }
-                return converter.get(data, pos);
-            }
-        };
+        return (RecordDataGetter<Object>)
+                (data, pos) -> {
+                    if (data.isNullAt(pos)) {
+                        return null;
+                    }
+                    return converter.get(data, pos);
+                };
     }
 }

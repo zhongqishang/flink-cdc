@@ -26,7 +26,6 @@ import org.apache.flink.cdc.common.pipeline.PipelineOptions;
 import org.apache.flink.cdc.common.pipeline.SchemaChangeBehavior;
 import org.apache.flink.cdc.common.source.FlinkSourceProvider;
 import org.apache.flink.cdc.common.source.MetadataAccessor;
-import org.apache.flink.cdc.composer.definition.RouteDef;
 import org.apache.flink.cdc.composer.flink.coordination.OperatorIDGenerator;
 import org.apache.flink.cdc.composer.flink.translator.SchemaOperatorTranslator;
 import org.apache.flink.cdc.connectors.mysql.factory.MySqlDataSourceFactory;
@@ -44,7 +43,6 @@ import org.apache.flink.shaded.guava31.com.google.common.collect.Lists;
 import com.qichacha.cdc.connectors.iceberg.sink.CatalogPropertiesUtils;
 import com.qichacha.cdc.connectors.iceberg.sink.IcebergMetadataApplier;
 import com.qichacha.cdc.connectors.iceberg.types.utils.FlinkCdcSchemaUtil;
-import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.catalog.Catalog;
@@ -56,19 +54,16 @@ import org.apache.iceberg.flink.TableLoader;
 import org.apache.iceberg.flink.sink.FlinkEventSink;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Random;
 
+import static org.apache.flink.cdc.common.pipeline.PipelineOptions.DEFAULT_SCHEMA_OPERATOR_RPC_TIMEOUT;
 import static org.apache.flink.cdc.connectors.mysql.source.MySqlDataSourceOptions.SCHEMA_CHANGE_ENABLED;
 
-/**
- * Sync.
- */
-public class Sync {
+/** Sync TiDB. */
+public class SyncTiDBTest {
     public static void main(String[] args) throws Exception {
 
         // Sets up the execution environment, which is the main entry point
@@ -78,23 +73,26 @@ public class Sync {
         env.enableCheckpointing(10 * 1000L);
         env.disableOperatorChaining();
 
+        String database = "manage_financial_db";
+        String tableName = "comp_prelist_tutoring_report";
         int parallelism = env.getParallelism();
 
         Properties properties = new Properties();
         properties.setProperty("useSSL", "false");
+
         MySqlSourceConfigFactory configFactory =
                 new MySqlSourceConfigFactory()
-                        .hostname("localhost")
-                        .port(3306)
-                        .username("root")
-                        .password("123456")
-                        .databaseList("test")
-                        .tableList("test\\.products.*")
-                        .startupOptions(StartupOptions.initial())
+                        .hostname("172.18.104.217")
+                        .port(4000)
+                        .username("tidev")
+                        .password("J50VUNgvdNgj65Bnst1I")
+                        .databaseList(database)
+                        .tableList(String.format("%s.%s", database, tableName))
                         .serverId(getServerId(env.getParallelism()))
-                        .serverTimeZone("UTC")
+                        .serverTimeZone("UTC+8")
                         .includeSchemaChanges(SCHEMA_CHANGE_ENABLED.defaultValue())
-                        .startupOptions(StartupOptions.initial())
+                        .startupOptions(StartupOptions.snapshot())
+                        .skipSnapshotBackfill(true)
                         .jdbcProperties(properties);
 
         FlinkSourceProvider sourceProvider =
@@ -115,19 +113,18 @@ public class Sync {
                 new SchemaOperatorTranslator(
                         SchemaChangeBehavior.EVOLVE,
                         PipelineOptions.PIPELINE_SCHEMA_OPERATOR_UID.defaultValue(),
-                        PipelineOptions.DEFAULT_SCHEMA_OPERATOR_RPC_TIMEOUT);
+                        DEFAULT_SCHEMA_OPERATOR_RPC_TIMEOUT);
 
         org.apache.hadoop.conf.Configuration hadoopConf = FlinkCatalogFactory.clusterHadoopConf();
 
         Map<String, String> catalogMap = CatalogPropertiesUtils.getProperties("ods_iceberg");
         CatalogLoader catalogLoader = CatalogLoader.hive("hive", hadoopConf, catalogMap);
-        TableIdentifier tableIdentifier = TableIdentifier.of("ods_iceberg", "products");
+        TableIdentifier tableIdentifier = TableIdentifier.of("ods_iceberg", tableName);
         Catalog catalog = catalogLoader.loadCatalog();
 
         Schema icebergSchema;
 
         TableLoader tableLoader = TableLoader.fromCatalog(catalogLoader, tableIdentifier);
-        // TODO remove
         if (catalog.tableExists(tableIdentifier)) {
             // Load schema from iceberg
             tableLoader.open();
@@ -136,7 +133,7 @@ public class Sync {
         } else {
             // Load schema from mysql and create iceberg
             org.apache.flink.cdc.common.schema.Schema tableSchema =
-                    metadataAccessor.getTableSchema(TableId.tableId("test", "products"));
+                    metadataAccessor.getTableSchema(TableId.tableId(database, tableName));
             icebergSchema = FlinkCdcSchemaUtil.convert(tableSchema);
             // Default set non partition
             catalog.createTable(tableIdentifier, icebergSchema, null, catalogMap);
@@ -147,9 +144,7 @@ public class Sync {
                         source,
                         parallelism,
                         new IcebergMetadataApplier(catalogLoader),
-                        Arrays.asList(
-                                new RouteDef("test.products", "ods_iceberg.products", null),
-                                new RouteDef("test.products_1", "ods_iceberg.products_1", null)));
+                        Collections.emptyList());
 
         OperatorIDGenerator schemaOperatorIDGenerator =
                 new OperatorIDGenerator(schemaOperatorTranslator.getSchemaOperatorUid());
@@ -163,10 +158,7 @@ public class Sync {
                 .operatorID(schemaOperatorIDGenerator.generate())
                 .catalogLoader(catalogLoader)
                 .overwrite(false)
-                .upsert(true)
                 .set("table-refresh-interval", "10s")
-                // .setAll(writeProps)
-                // .flinkConf(readableConfig)
                 .append();
 
         env.execute(String.format("Flink CDC sync %s", tableIdentifier));
@@ -176,11 +168,5 @@ public class Sync {
         final Random random = new Random();
         int serverId = random.nextInt(100) + 5400;
         return serverId + "-" + (serverId + parallelism);
-    }
-
-    public static PartitionSpec toPartitionSpec(List<String> partitionKeys, Schema icebergSchema) {
-        PartitionSpec.Builder builder = PartitionSpec.builderFor(icebergSchema);
-        partitionKeys.forEach(builder::identity);
-        return builder.build();
     }
 }

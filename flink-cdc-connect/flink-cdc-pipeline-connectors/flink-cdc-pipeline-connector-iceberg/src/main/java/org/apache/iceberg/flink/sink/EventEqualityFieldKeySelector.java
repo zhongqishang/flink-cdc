@@ -20,65 +20,98 @@
 package org.apache.iceberg.flink.sink;
 
 import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.cdc.common.data.RecordData;
 import org.apache.flink.cdc.common.event.DataChangeEvent;
 import org.apache.flink.cdc.common.event.Event;
+import org.apache.flink.cdc.common.event.OperationType;
+import org.apache.flink.cdc.common.event.TableId;
 import org.apache.flink.cdc.runtime.partitioning.PartitioningEvent;
-import org.apache.flink.table.types.logical.RowType;
 
 import org.apache.iceberg.Schema;
-import org.apache.iceberg.relocated.com.google.common.collect.Sets;
+import org.apache.iceberg.Table;
+import org.apache.iceberg.catalog.Catalog;
+import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.flink.CatalogLoader;
+import org.apache.iceberg.flink.FlinkSchemaUtil;
+import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.apache.iceberg.types.TypeUtil;
 import org.apache.iceberg.util.StructLikeWrapper;
 import org.apache.iceberg.util.StructProjection;
 
-import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Create a {@link KeySelector} to shuffle by equality fields, to ensure same equality fields record
  * will be emitted to same writer in order.
  */
-class EventEqualityFieldKeySelector implements KeySelector<PartitioningEvent, Integer> {
+public class EventEqualityFieldKeySelector implements KeySelector<PartitioningEvent, Integer> {
 
-    private final Schema schema;
-    private final RowType flinkSchema;
-    private final Schema deleteSchema;
+    private final CatalogLoader catalogLoader;
+    private transient Catalog catalog;
 
-    private transient RecordDataWrapper rowDataWrapper;
-    private transient StructProjection structProjection;
-    private transient StructLikeWrapper structLikeWrapper;
+    private transient Map<TableId, RecordDataWrapper> rowDataWrappers;
+    private transient Map<TableId, StructProjection> structProjections;
+    private transient Map<TableId, StructLikeWrapper> structLikeWrappers;
 
-    EventEqualityFieldKeySelector(
-            Schema schema, RowType flinkSchema, List<Integer> equalityFieldIds) {
-        this.schema = schema;
-        this.flinkSchema = flinkSchema;
-        this.deleteSchema = TypeUtil.select(schema, Sets.newHashSet(equalityFieldIds));
+    EventEqualityFieldKeySelector(CatalogLoader catalogLoader) {
+        this.catalogLoader = catalogLoader;
     }
 
     /**
      * Construct the {@link RecordDataWrapper} lazily here because few members in it are not
      * serializable. In this way, we don't have to serialize them with forcing.
      */
-    protected RecordDataWrapper lazyRowDataWrapper() {
+    protected RecordDataWrapper lazyRowDataWrapper(TableId tableId) {
+        if (catalog == null) {
+            catalog = catalogLoader.loadCatalog();
+        }
+        if (rowDataWrappers == null) {
+            rowDataWrappers = Maps.newConcurrentMap();
+        }
+        if (structProjections == null) {
+            structProjections = Maps.newConcurrentMap();
+        }
+        if (structLikeWrappers == null) {
+            structLikeWrappers = Maps.newConcurrentMap();
+        }
+        RecordDataWrapper rowDataWrapper = rowDataWrappers.get(tableId);
         if (rowDataWrapper == null) {
-            rowDataWrapper = new RecordDataWrapper(flinkSchema, schema.asStruct());
+            Table table = catalog.loadTable(TableIdentifier.parse(tableId.identifier()));
+            Set<Integer> integers = table.schema().identifierFieldIds();
+            rowDataWrapper =
+                    new RecordDataWrapper(
+                            FlinkSchemaUtil.convert(table.schema()), table.schema().asStruct());
+            rowDataWrappers.put(tableId, rowDataWrapper);
+
+            // Construct the {@link StructProjection} lazily because it is not serializable.
+            Schema deleteSchema = TypeUtil.select(table.schema(), integers);
+            StructProjection structProjection =
+                    StructProjection.create(table.schema(), deleteSchema);
+            structProjections.put(tableId, structProjection);
+            StructLikeWrapper structLikeWrapper =
+                    StructLikeWrapper.forType(deleteSchema.asStruct());
+            structLikeWrappers.put(tableId, structLikeWrapper);
         }
         return rowDataWrapper;
     }
 
     /** Construct the {@link StructProjection} lazily because it is not serializable. */
-    protected StructProjection lazyStructProjection() {
-        if (structProjection == null) {
-            structProjection = StructProjection.create(schema, deleteSchema);
+    protected StructProjection lazyStructProjection(TableId tableId) {
+        if (!structProjections.containsKey(tableId)) {
+            throw new RuntimeException(
+                    "Cannot find structProjection for table " + tableId.identifier());
         }
-        return structProjection;
+        return structProjections.get(tableId);
     }
 
     /** Construct the {@link StructLikeWrapper} lazily because it is not serializable. */
-    protected StructLikeWrapper lazyStructLikeWrapper() {
-        if (structLikeWrapper == null) {
-            structLikeWrapper = StructLikeWrapper.forType(deleteSchema.asStruct());
+    protected StructLikeWrapper lazyStructLikeWrapper(TableId tableId) {
+        if (!structLikeWrappers.containsKey(tableId)) {
+            throw new RuntimeException(
+                    "Cannot find structLikeWrapper for table " + tableId.identifier());
         }
-        return structLikeWrapper;
+        return structLikeWrappers.get(tableId);
     }
 
     @Override
@@ -86,10 +119,17 @@ class EventEqualityFieldKeySelector implements KeySelector<PartitioningEvent, In
         Event payload = event.getPayload();
         int targetPartition = event.getTargetPartition();
         if (payload instanceof DataChangeEvent) {
+            DataChangeEvent dataChangeEvent = (DataChangeEvent) payload;
+            RecordData recordData =
+                    dataChangeEvent.op() == OperationType.DELETE
+                            ? dataChangeEvent.before()
+                            : dataChangeEvent.after();
             RecordDataWrapper wrappedRowData =
-                    lazyRowDataWrapper().wrap(((DataChangeEvent) payload).after());
-            StructProjection projectedRowData = lazyStructProjection().wrap(wrappedRowData);
-            StructLikeWrapper wrapper = lazyStructLikeWrapper().set(projectedRowData);
+                    lazyRowDataWrapper(dataChangeEvent.tableId()).wrap(recordData);
+            StructProjection projectedRowData =
+                    lazyStructProjection(dataChangeEvent.tableId()).wrap(wrappedRowData);
+            StructLikeWrapper wrapper =
+                    lazyStructLikeWrapper(dataChangeEvent.tableId()).set(projectedRowData);
             return Math.abs(wrapper.hashCode());
         } else {
             // FlushEvent

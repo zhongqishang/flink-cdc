@@ -25,6 +25,7 @@ import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
+import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.io.TaskWriter;
 import org.apache.iceberg.io.WriteResult;
 import org.apache.iceberg.relocated.com.google.common.base.MoreObjects;
@@ -33,12 +34,12 @@ import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
 /** IcebergEventStreamWriter. */
-public class IcebergEventStreamWriter<T> extends AbstractStreamOperator<WriteResult>
-        implements OneInputStreamOperator<T, WriteResult>, BoundedOneInput {
+public class IcebergEventStreamWriter<T> extends AbstractStreamOperator<TableWriteResult>
+        implements OneInputStreamOperator<T, TableWriteResult>, BoundedOneInput {
 
     private static final long serialVersionUID = 1L;
 
-    private final String fullTableName;
+    private final TableIdentifier tableId;
     private TaskWriterFactory<T> taskWriterFactory;
 
     private transient TaskWriter<T> writer;
@@ -47,19 +48,16 @@ public class IcebergEventStreamWriter<T> extends AbstractStreamOperator<WriteRes
     private transient IcebergStreamWriterMetrics writerMetrics;
     private transient boolean hasWriter = false;
 
-    IcebergEventStreamWriter(String fullTableName, TaskWriterFactory<T> taskWriterFactory) {
-        this.fullTableName = fullTableName;
-        this.taskWriterFactory = taskWriterFactory;
+    IcebergEventStreamWriter(TableIdentifier tableId) {
+        this.tableId = tableId;
         setChainingStrategy(ChainingStrategy.ALWAYS);
     }
 
-    public void schemaEvolution(TaskWriterFactory<T> taskWriterFactory) {
+    public void setTaskWriterFactory(TaskWriterFactory<T> taskWriterFactory) {
         if (taskWriterFactory == null) {
             throw new RuntimeException("not get taskWriterFactory");
         }
-
         this.taskWriterFactory = taskWriterFactory;
-
         // Initialize the task writer factory.
         this.taskWriterFactory.initialize(subTaskId, attemptId);
         // Initialize the task writer.
@@ -75,7 +73,8 @@ public class IcebergEventStreamWriter<T> extends AbstractStreamOperator<WriteRes
     public void open() {
         this.subTaskId = getRuntimeContext().getIndexOfThisSubtask();
         this.attemptId = getRuntimeContext().getAttemptNumber();
-        this.writerMetrics = new IcebergStreamWriterMetrics(super.metrics, fullTableName);
+        this.writerMetrics =
+                new IcebergStreamWriterMetrics(super.metrics, tableId.namespace() + tableId.name());
 
         // Initialize the task writer factory.
         this.taskWriterFactory.initialize(subTaskId, attemptId);
@@ -120,7 +119,7 @@ public class IcebergEventStreamWriter<T> extends AbstractStreamOperator<WriteRes
     @Override
     public String toString() {
         return MoreObjects.toStringHelper(this)
-                .add("table_name", fullTableName)
+                .add("tableId", tableId.toString())
                 .add("subtask_id", subTaskId)
                 .add("attempt_id", attemptId)
                 .toString();
@@ -135,7 +134,7 @@ public class IcebergEventStreamWriter<T> extends AbstractStreamOperator<WriteRes
         long startNano = System.nanoTime();
         WriteResult result = writer.complete();
         writerMetrics.updateFlushResult(result);
-        output.collect(new StreamRecord<>(result));
+        output.collect(new StreamRecord<>(new TableWriteResult(tableId, result)));
         writerMetrics.flushDuration(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNano));
 
         // Set writer to null to prevent duplicate flushes in the corner case of

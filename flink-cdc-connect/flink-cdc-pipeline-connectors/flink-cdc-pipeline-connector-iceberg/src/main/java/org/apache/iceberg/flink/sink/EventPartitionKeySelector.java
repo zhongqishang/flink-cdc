@@ -22,12 +22,18 @@ package org.apache.iceberg.flink.sink;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.cdc.common.event.DataChangeEvent;
 import org.apache.flink.cdc.common.event.Event;
+import org.apache.flink.cdc.common.event.TableId;
 import org.apache.flink.cdc.runtime.partitioning.PartitioningEvent;
-import org.apache.flink.table.types.logical.RowType;
 
 import org.apache.iceberg.PartitionKey;
-import org.apache.iceberg.PartitionSpec;
-import org.apache.iceberg.Schema;
+import org.apache.iceberg.Table;
+import org.apache.iceberg.catalog.Catalog;
+import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.flink.CatalogLoader;
+import org.apache.iceberg.flink.FlinkSchemaUtil;
+import org.apache.iceberg.relocated.com.google.common.collect.Maps;
+
+import java.util.Map;
 
 /**
  * Create a {@link KeySelector} to shuffle by partition key, then each partition/bucket will be
@@ -35,26 +41,32 @@ import org.apache.iceberg.Schema;
  * for {@link FlinkSink}.
  */
 public class EventPartitionKeySelector implements KeySelector<PartitioningEvent, Integer> {
+    private final CatalogLoader catalogLoader;
+    private transient Catalog catalog;
+    private final transient Map<TableId, PartitionKey> partitionKeys = Maps.newConcurrentMap();
+    private final transient Map<TableId, RecordDataWrapper> rowDataWrappers =
+            Maps.newConcurrentMap();
 
-    private final Schema schema;
-    private final PartitionKey partitionKey;
-    private final RowType flinkSchema;
-
-    private transient RecordDataWrapper rowDataWrapper;
-
-    EventPartitionKeySelector(PartitionSpec spec, Schema schema, RowType flinkSchema) {
-        this.schema = schema;
-        this.partitionKey = new PartitionKey(spec, schema);
-        this.flinkSchema = flinkSchema;
+    EventPartitionKeySelector(CatalogLoader catalogLoader) {
+        this.catalogLoader = catalogLoader;
     }
 
     /**
      * Construct the {@link RecordDataWrapper} lazily here because few members in it are not
      * serializable. In this way, we don't have to serialize them with forcing.
      */
-    private RecordDataWrapper lazyRowDataWrapper() {
+    private RecordDataWrapper lazyRowDataWrapper(TableId tableId) {
+        RecordDataWrapper rowDataWrapper = rowDataWrappers.get(tableId);
         if (rowDataWrapper == null) {
-            rowDataWrapper = new RecordDataWrapper(flinkSchema, schema.asStruct());
+            if (catalog == null) {
+                catalog = catalogLoader.loadCatalog();
+            }
+            Table table = catalog.loadTable(TableIdentifier.parse(tableId.identifier()));
+            rowDataWrapper =
+                    new RecordDataWrapper(
+                            FlinkSchemaUtil.convert(table.schema()), table.schema().asStruct());
+            rowDataWrappers.put(tableId, rowDataWrapper);
+            partitionKeys.put(tableId, new PartitionKey(table.spec(), table.schema()));
         }
         return rowDataWrapper;
     }
@@ -62,9 +74,13 @@ public class EventPartitionKeySelector implements KeySelector<PartitioningEvent,
     @Override
     public Integer getKey(PartitioningEvent event) {
         Event payload = event.getPayload();
+        // TODO partition changed will be cause data duplicate.
         if (payload instanceof DataChangeEvent) {
-            // TODO partition changed will be cause data duplicate.
-            partitionKey.partition(lazyRowDataWrapper().wrap(((DataChangeEvent) payload).after()));
+            DataChangeEvent dataChangeEvent = (DataChangeEvent) payload;
+            TableId tableId = dataChangeEvent.tableId();
+            RecordDataWrapper wrapped = lazyRowDataWrapper(tableId).wrap(dataChangeEvent.after());
+            PartitionKey partitionKey = partitionKeys.get(tableId);
+            partitionKey.partition(wrapped);
             return partitionKey.toPath().hashCode();
         } else {
             // FlushEvent

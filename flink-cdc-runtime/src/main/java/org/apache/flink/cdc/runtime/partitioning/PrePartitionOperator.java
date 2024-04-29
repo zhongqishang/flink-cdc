@@ -26,6 +26,7 @@ import org.apache.flink.cdc.common.event.FlushEvent;
 import org.apache.flink.cdc.common.event.OperationType;
 import org.apache.flink.cdc.common.event.SchemaChangeEvent;
 import org.apache.flink.cdc.common.event.TableId;
+import org.apache.flink.cdc.common.event.TruncateTableEvent;
 import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.runtime.operators.schema.SchemaOperator;
 import org.apache.flink.cdc.runtime.operators.sink.SchemaEvolutionClient;
@@ -78,7 +79,8 @@ public class PrePartitionOperator extends AbstractStreamOperator<PartitioningEve
     @Override
     public void processElement(StreamRecord<Event> element) throws Exception {
         Event event = element.getValue();
-        if (event instanceof SchemaChangeEvent) {
+        if (event instanceof TruncateTableEvent) {
+        } else if (event instanceof SchemaChangeEvent) {
             // Update hash function
             TableId tableId = ((SchemaChangeEvent) event).tableId();
             cachedHashFunctions.put(tableId, recreateHashFunction(tableId));

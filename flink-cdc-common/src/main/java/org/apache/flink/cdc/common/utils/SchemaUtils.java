@@ -24,6 +24,7 @@ import org.apache.flink.cdc.common.event.AlterColumnTypeEvent;
 import org.apache.flink.cdc.common.event.DropColumnEvent;
 import org.apache.flink.cdc.common.event.RenameColumnEvent;
 import org.apache.flink.cdc.common.event.SchemaChangeEvent;
+import org.apache.flink.cdc.common.event.TruncateTableEvent;
 import org.apache.flink.cdc.common.schema.Column;
 import org.apache.flink.cdc.common.schema.Schema;
 
@@ -66,6 +67,8 @@ public class SchemaUtils {
             return applyRenameColumnEvent((RenameColumnEvent) event, schema);
         } else if (event instanceof AlterColumnTypeEvent) {
             return applyAlterColumnTypeEvent((AlterColumnTypeEvent) event, schema);
+        } else if (event instanceof TruncateTableEvent) {
+            return schema;
         } else {
             throw new UnsupportedOperationException(
                     String.format(
