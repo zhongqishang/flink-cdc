@@ -134,27 +134,27 @@ class FlinkCdcTypeToType extends DataTypeDefaultVisitor<Type> {
 
     @Override
     public Type visit(DateType dateType) {
-        return Types.DateType.get();
+        return Types.StringType.get();
     }
 
     @Override
     public Type visit(TimeType timeType) {
-        return Types.TimeType.get();
+        return Types.StringType.get();
     }
 
     @Override
     public Type visit(TimestampType timestampType) {
-        return Types.TimestampType.withZone();
+        return Types.StringType.get();
     }
 
     @Override
     public Type visit(ZonedTimestampType zonedTimestampType) {
-        return Types.TimestampType.withZone();
+        return Types.StringType.get();
     }
 
     @Override
     public Type visit(LocalZonedTimestampType localZonedTimestampType) {
-        return Types.TimestampType.withZone();
+        return Types.StringType.get();
     }
 
     @Override

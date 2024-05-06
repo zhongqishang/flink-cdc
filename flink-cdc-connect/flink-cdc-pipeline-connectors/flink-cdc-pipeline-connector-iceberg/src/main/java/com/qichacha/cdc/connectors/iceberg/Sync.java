@@ -57,7 +57,6 @@ import org.apache.iceberg.flink.sink.FlinkEventSink;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -65,9 +64,7 @@ import java.util.Random;
 
 import static org.apache.flink.cdc.connectors.mysql.source.MySqlDataSourceOptions.SCHEMA_CHANGE_ENABLED;
 
-/**
- * Sync.
- */
+/** Sync. */
 public class Sync {
     public static void main(String[] args) throws Exception {
 

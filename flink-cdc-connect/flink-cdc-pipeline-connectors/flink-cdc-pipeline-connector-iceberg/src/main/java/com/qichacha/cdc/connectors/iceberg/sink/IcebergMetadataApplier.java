@@ -57,12 +57,9 @@ import java.util.stream.Collectors;
 
 import static com.qichacha.cdc.connectors.iceberg.Sync.toPartitionSpec;
 
-/**
- * A {@code MetadataApplier} that applies metadata changes to Iceberg. Support primary key table
- * only.
- */
+/** A {@code MetadataApplier} that applies metadata changes to Iceberg. */
 public class IcebergMetadataApplier implements MetadataApplier {
-
+    private static final long serialVersionUID = 1L;
     private static final Logger LOG = LoggerFactory.getLogger(IcebergMetadataApplier.class);
 
     private final CatalogLoader catalogLoader;

@@ -98,9 +98,7 @@ public class SchemaOperator extends AbstractStreamOperator<Event>
     private final long rpcTimeOutInMillis;
 
     public SchemaOperator(List<Tuple2<String, TableId>> routingRules) {
-        this.routingRules = routingRules;
-        this.chainingStrategy = ChainingStrategy.ALWAYS;
-        this.rpcTimeOutInMillis = DEFAULT_SCHEMA_OPERATOR_RPC_TIMEOUT.toMillis();
+        this(routingRules, DEFAULT_SCHEMA_OPERATOR_RPC_TIMEOUT);
     }
 
     public SchemaOperator(List<Tuple2<String, TableId>> routingRules, Duration rpcTimeOut) {
