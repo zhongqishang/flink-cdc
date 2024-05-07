@@ -32,8 +32,6 @@ import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.common.sink.MetadataApplier;
 import org.apache.flink.cdc.common.types.DataType;
 
-import org.apache.flink.shaded.guava31.com.google.common.collect.Lists;
-
 import com.qichacha.cdc.connectors.iceberg.types.utils.DataTypeUtils;
 import com.qichacha.cdc.connectors.iceberg.types.utils.FlinkCdcSchemaUtil;
 import org.apache.iceberg.PartitionSpec;
@@ -54,8 +52,6 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-
-import static com.qichacha.cdc.connectors.iceberg.Sync.toPartitionSpec;
 
 /** A {@code MetadataApplier} that applies metadata changes to Iceberg. */
 public class IcebergMetadataApplier implements MetadataApplier {
@@ -118,14 +114,11 @@ public class IcebergMetadataApplier implements MetadataApplier {
         }
 
         org.apache.iceberg.Schema icebergSchema = FlinkCdcSchemaUtil.convert(schema);
-        PartitionSpec spec =
-                toPartitionSpec(
-                        Lists.newArrayList(icebergSchema.identifierFieldNames()), icebergSchema);
         try {
             catalog.createTable(
                     tableIdentifier,
                     icebergSchema,
-                    spec,
+                    PartitionSpec.unpartitioned(),
                     CatalogPropertiesUtils.getProperties(tableId.getSchemaName()));
         } catch (AlreadyExistsException e) {
             LOG.warn("Failed to apply create table, event: {}", createTableEvent, e);

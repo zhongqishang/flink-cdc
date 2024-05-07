@@ -33,7 +33,6 @@ import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.OutputFileFactory;
 import org.apache.iceberg.io.PartitionedFanoutWriter;
 import org.apache.iceberg.io.TaskWriter;
-import org.apache.iceberg.io.UnpartitionedWriter;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 import org.apache.iceberg.types.TypeUtil;
@@ -173,54 +172,20 @@ public class EventTaskWriterFactory implements TaskWriterFactory<RowData> {
 
         refreshTable();
 
-        if (equalityFieldIds == null || equalityFieldIds.isEmpty()) {
-            // Initialize a task writer to write INSERT only.
-            if (spec.isUnpartitioned()) {
-                return new UnpartitionedWriter<>(
-                        spec,
-                        format,
-                        appenderFactory,
-                        outputFileFactory,
-                        tableSupplier.get().io(),
-                        targetFileSizeBytes);
-            } else {
-                return new EventTaskWriterFactory.RowDataPartitionedFanoutWriter(
-                        spec,
-                        format,
-                        appenderFactory,
-                        outputFileFactory,
-                        tableSupplier.get().io(),
-                        targetFileSizeBytes,
-                        schema,
-                        flinkSchema);
-            }
+        if (equalityFieldIds != null && !equalityFieldIds.isEmpty() && spec.isUnpartitioned()) {
+            return new UnpartitionedDeltaWriter(
+                    spec,
+                    format,
+                    appenderFactory,
+                    outputFileFactory,
+                    tableSupplier.get().io(),
+                    targetFileSizeBytes,
+                    schema,
+                    flinkSchema,
+                    equalityFieldIds,
+                    upsert);
         } else {
-            // Initialize a task writer to write both INSERT and equality DELETE.
-            if (spec.isUnpartitioned()) {
-                return new UnpartitionedDeltaWriter(
-                        spec,
-                        format,
-                        appenderFactory,
-                        outputFileFactory,
-                        tableSupplier.get().io(),
-                        targetFileSizeBytes,
-                        schema,
-                        flinkSchema,
-                        equalityFieldIds,
-                        upsert);
-            } else {
-                return new PartitionedDeltaWriter(
-                        spec,
-                        format,
-                        appenderFactory,
-                        outputFileFactory,
-                        tableSupplier.get().io(),
-                        targetFileSizeBytes,
-                        schema,
-                        flinkSchema,
-                        equalityFieldIds,
-                        upsert);
-            }
+            throw new UnsupportedOperationException("Unpartitioned equality fields not supported");
         }
     }
 
