@@ -154,7 +154,27 @@ public class IcebergMetadataApplier implements MetadataApplier {
             Type icebergType =
                     FlinkSchemaUtil.convert(
                             DataTypeUtils.toFlinkQccDataType(column.getType()).getLogicalType());
-            pendingUpdate.addColumn(column.getName(), icebergType);
+            if (column.getType().isNullable()) {
+                pendingUpdate.addColumn(column.getName(), icebergType);
+            } else {
+                pendingUpdate.addRequiredColumn(column.getName(), icebergType);
+            }
+            AddColumnEvent.ColumnPosition position = columnWithPosition.getPosition();
+            switch (position) {
+                case BEFORE:
+                    pendingUpdate.moveBefore(
+                            column.getName(), columnWithPosition.getExistedColumnName());
+                    break;
+                case AFTER:
+                    pendingUpdate.moveAfter(
+                            column.getName(), columnWithPosition.getExistedColumnName());
+                    break;
+                case FIRST:
+                    pendingUpdate.moveFirst(column.getName());
+                    break;
+                default:
+                    break;
+            }
         }
         pendingUpdate.commit();
         transaction.commitTransaction();
