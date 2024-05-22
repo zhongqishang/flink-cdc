@@ -19,7 +19,6 @@
 
 package org.apache.iceberg.flink.sink;
 
-import org.apache.flink.cdc.common.data.DecimalData;
 import org.apache.flink.cdc.common.data.RecordData;
 import org.apache.flink.cdc.common.event.CreateTableEvent;
 import org.apache.flink.cdc.common.event.DataChangeEvent;
@@ -29,7 +28,7 @@ import org.apache.flink.cdc.common.event.OperationType;
 import org.apache.flink.cdc.common.event.SchemaChangeEvent;
 import org.apache.flink.cdc.common.event.TableId;
 import org.apache.flink.cdc.common.schema.Schema;
-import org.apache.flink.cdc.common.types.DecimalType;
+import org.apache.flink.cdc.common.types.DataType;
 import org.apache.flink.cdc.common.utils.SchemaUtils;
 import org.apache.flink.cdc.runtime.operators.sink.SchemaEvolutionClient;
 import org.apache.flink.runtime.jobgraph.OperatorID;
@@ -58,6 +57,7 @@ import org.apache.iceberg.flink.FlinkSchemaUtil;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** Iceberg Sink Writer Operator. */
@@ -70,7 +70,7 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
     private SchemaEvolutionClient schemaEvolutionClient;
 
     private final OperatorID schemaOperatorID;
-    private final Map<TableId, Schema> schemas = new ConcurrentHashMap<>();
+    private final Map<TableId, Schema> schemaMaps = new ConcurrentHashMap<>();
     private final Map<TableId, Table> tables = new ConcurrentHashMap<>();
     private final Map<TableId, IcebergEventStreamWriter<RowData>> writes =
             new ConcurrentHashMap<>();
@@ -139,21 +139,20 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
             TableId tableId = ((SchemaChangeEvent) event).tableId();
             if (event instanceof CreateTableEvent) {
                 CreateTableEvent createTableEvent = (CreateTableEvent) event;
-                schemas.put(createTableEvent.tableId(), createTableEvent.getSchema());
+                schemaMaps.put(createTableEvent.tableId(), createTableEvent.getSchema());
             } else {
                 SchemaChangeEvent schemaChangeEvent = (SchemaChangeEvent) event;
-                schemas.put(
-                        schemaChangeEvent.tableId(),
+                checkLatestSchema(tableId);
+                Schema applySchemaChangeEvent =
                         SchemaUtils.applySchemaChangeEvent(
-                                schemas.get(schemaChangeEvent.tableId()), schemaChangeEvent));
+                                schemaMaps.get(tableId), schemaChangeEvent);
+                schemaMaps.put(schemaChangeEvent.tableId(), applySchemaChangeEvent);
                 IcebergEventStreamWriter<RowData> remove = writes.remove(tableId);
                 if (remove != null) {
                     remove.flush();
                     remove.close();
                 }
             }
-            schemaEvolutionClient.notifyFlushSuccess(
-                    getRuntimeContext().getIndexOfThisSubtask(), tableId);
         } else if (event instanceof FlushEvent) {
             TableId tableId = ((FlushEvent) event).getTableId();
             IcebergEventStreamWriter<RowData> streamWriter = writes.get(tableId);
@@ -170,6 +169,7 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
 
         } else if (event instanceof DataChangeEvent) {
             TableId tableId = ((DataChangeEvent) event).tableId();
+            checkLatestSchema(tableId);
             IcebergEventStreamWriter<RowData> streamWriter =
                     writes.computeIfAbsent(tableId, k -> createCopySinkWriter(tableId));
             if (!streamWriter.hasWriter()) {
@@ -177,6 +177,13 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
             }
             DataChangeEvent dataChangeEvent = (DataChangeEvent) event;
             serializerRecord(streamWriter, dataChangeEvent);
+        }
+    }
+
+    private void checkLatestSchema(TableId tableId) throws Exception {
+        if (!schemaMaps.containsKey(tableId)) {
+            Optional<Schema> latestSchema = schemaEvolutionClient.getLatestSchema(tableId);
+            latestSchema.ifPresent(schema -> schemaMaps.put(tableId, schema));
         }
     }
 
@@ -208,8 +215,8 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
     }
 
     void recreate(TableId tableId) throws Exception {
-        Schema schema = schemas.get(tableId);
-        LOG.info("Recreate writer schema is {}.", schema);
+        Schema schema = schemaMaps.get(tableId);
+        LOG.info("Recreate {} writer schema is {}.", tableId.identifier(), schema);
         writes.get(tableId).setTaskWriterFactory(createTaskWriterFactory(tableId));
     }
 
@@ -253,16 +260,25 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
     }
 
     private RowData serializerRecord(TableId tableId, RowKind rowKind, RecordData recordData) {
-        GenericRowData rowData = new GenericRowData(rowKind, recordData.getArity());
-        // TODO 不能解决 failover 的问题，需要引入 lastSchema 和 routeRef
-        if (!schemas.containsKey(tableId)) {
+
+        if (!schemaMaps.containsKey(tableId)) {
             throw new RuntimeException("Table " + tableId + " does not exist");
         }
-        Schema schema = schemas.get(tableId);
+        // TODO 应该以 iceberg schema 为准
+        org.apache.iceberg.Schema icebergSchema = tables.get(tableId).schema();
+        Schema schema = schemaMaps.get(tableId);
         List<org.apache.flink.cdc.common.types.DataType> columnDataTypes =
                 schema.getColumnDataTypes();
-        for (int i = 0; i < schema.getColumnCount(); i++) {
-            RecordDataGetter<?> converter = getOrCreateConverter(columnDataTypes.get(i));
+
+        int size = icebergSchema.columns().size();
+        GenericRowData rowData = new GenericRowData(rowKind, size);
+        for (int i = 0; i < size; i++) {
+            if (columnDataTypes.size() <= i) {
+                rowData.setField(i, null);
+                continue;
+            }
+            DataType dataType = columnDataTypes.get(i);
+            RecordDataGetter<?> converter = getOrCreateConverter(dataType);
             Object o = converter.get(recordData, i);
             rowData.setField(i, o);
         }
@@ -284,9 +300,9 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
             org.apache.flink.cdc.common.types.DataType dataType) {
         switch (dataType.getTypeRoot()) {
             case TINYINT:
-                return RecordData::getByte;
+                return (row, pos) -> (int) row.getByte(pos);
             case SMALLINT:
-                return RecordData::getShort;
+                return (row, pos) -> (int) row.getShort(pos);
             case INTEGER:
                 return RecordData::getInt;
             case BIGINT:
@@ -304,51 +320,29 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
             case TIMESTAMP_WITHOUT_TIME_ZONE:
             case TIMESTAMP_WITH_TIME_ZONE:
             case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
+            case DECIMAL:
                 return (row, pos) -> StringData.fromString(row.getString(pos).toString());
             case BINARY:
             case VARBINARY:
                 return RecordData::getBinary;
-            case DECIMAL:
-                DecimalType decimalType = (DecimalType) dataType;
-                int precision = decimalType.getPrecision();
-                int scale = decimalType.getScale();
-                return (row, pos) ->
-                        DecimalData.fromBigDecimal(
-                                row.getDecimal(pos, precision, scale).toBigDecimal(),
-                                precision,
-                                scale);
-                // case TIME_WITHOUT_TIME_ZONE:
-                //     // Time in RowData is in milliseconds (Integer), while iceberg's time is
-                //     // microseconds (Long).
-                //     return (row, pos) -> ((long) row.getInt(pos)) * 1_000;
-                // case TIMESTAMP_WITHOUT_TIME_ZONE:
-                //     TimestampType timestampType = (TimestampType) dataType;
-                //     return (row, pos) ->
-                //             org.apache.flink.table.data.TimestampData.fromEpochMillis(
-                //                     row.getTimestamp(pos, timestampType.getPrecision())
-                //                             .getMillisecond());
-                // case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
-                //     LocalZonedTimestampType lzTs = (LocalZonedTimestampType) dataType;
-                //     return (row, pos) -> {
-                //         TimestampData timestampData = row.getTimestamp(pos, lzTs.getPrecision());
-                //         return org.apache.flink.table.data.TimestampData.fromEpochMillis(
-                //                 timestampData.getMillisecond());
-                //     };
-                // case ARRAY:
+            case ARRAY:
+                return RecordData::getArray;
             case ROW:
                 org.apache.flink.cdc.common.types.RowType rowType =
                         (org.apache.flink.cdc.common.types.RowType) dataType;
                 return (row, pos) -> row.getRow(pos, rowType.getFieldCount());
 
             default:
-                return null;
+                throw new UnsupportedOperationException(
+                        "Unsupported " + dataType.getTypeRoot().toString());
         }
     }
 
     private static RecordDataGetter<?> wrapIntoNullableConverter(RecordDataGetter<?> converter) {
         return (RecordDataGetter<Object>)
                 (data, pos) -> {
-                    if (data.isNullAt(pos)) {
+                    // Add data.getArity() < pos
+                    if (data.getArity() <= pos || data.isNullAt(pos)) {
                         return null;
                     }
                     return converter.get(data, pos);

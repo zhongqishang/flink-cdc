@@ -99,7 +99,7 @@ class FlinkCdcTypeToType extends DataTypeDefaultVisitor<Type> {
 
     @Override
     public Type visit(DecimalType decimalType) {
-        return Types.DecimalType.of(decimalType.getPrecision(), decimalType.getScale());
+        return Types.StringType.get();
     }
 
     @Override

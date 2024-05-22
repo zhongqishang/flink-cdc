@@ -54,6 +54,10 @@ public class EventEqualityFieldKeySelector implements KeySelector<PartitioningEv
     private transient Map<TableId, StructProjection> structProjections;
     private transient Map<TableId, StructLikeWrapper> structLikeWrappers;
 
+    /**
+     * @param catalogLoader catalog Loader
+     * @param mode TODO 如果为单表模式，默认为现有的 hashcode，如果为多表，hashcode 为 table id 的 hashcode, 根据流量判断是否
+     */
     EventEqualityFieldKeySelector(CatalogLoader catalogLoader) {
         this.catalogLoader = catalogLoader;
     }

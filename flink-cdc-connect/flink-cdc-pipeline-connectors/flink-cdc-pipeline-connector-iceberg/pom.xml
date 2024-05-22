@@ -218,4 +218,37 @@
 
     </dependencies>
 
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.1.1</version>
+                <executions>
+                    <execution>
+                        <id>shade-flink</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <shadeTestJar>false</shadeTestJar>
+                            <artifactSet>
+                                <includes>
+                                    <include>org.apache.paimon:*</include>
+                                </includes>
+                            </artifactSet>
+                            <relocations>
+<!--                                <relocation>-->
+<!--                                    <pattern>org.apache.kafka</pattern>-->
+<!--                                    <shadedPattern>shaded.iceberg.org.apache.kafka</shadedPattern>-->
+<!--                                </relocation>-->
+                            </relocations>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
 </project>

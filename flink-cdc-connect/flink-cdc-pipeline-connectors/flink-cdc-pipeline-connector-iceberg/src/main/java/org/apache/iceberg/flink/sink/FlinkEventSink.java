@@ -363,8 +363,6 @@ public class FlinkEventSink {
                             ? input.getParallelism()
                             : flinkWriteConf.writeParallelism();
 
-            // Distribute the records from input data stream based on the write.distribution-mode
-            // and equality fields.
             DataStream<Event> distributeStream =
                     input.transform(
                                     "IcebergPrePartition",

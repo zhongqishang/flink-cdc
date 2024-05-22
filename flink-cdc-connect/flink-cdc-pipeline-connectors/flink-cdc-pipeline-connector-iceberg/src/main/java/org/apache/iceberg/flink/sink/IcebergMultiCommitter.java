@@ -50,7 +50,7 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
     private static final long serialVersionUID = 1L;
     private static final Logger LOG = LoggerFactory.getLogger(IcebergMultiCommitter.class);
 
-    private CatalogLoader catalogLoader;
+    private final CatalogLoader catalogLoader;
     private transient Catalog catalog;
     private final boolean replacePartitions;
     private final Map<String, String> snapshotProperties;
@@ -130,6 +130,10 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
         committer.setup(getContainingTask(), getOperatorConfig(), output);
         try {
             committer.open();
+            // Method initializeState = committer.getClass().getMethod("initializeState",
+            // StateInitializationContext.class);
+            // initializeState.setAccessible(true);
+            // initializeState.invoke(committer, context);
             committer.initializeState(streamTaskStateManager);
         } catch (Exception e) {
             throw new RuntimeException(e);
