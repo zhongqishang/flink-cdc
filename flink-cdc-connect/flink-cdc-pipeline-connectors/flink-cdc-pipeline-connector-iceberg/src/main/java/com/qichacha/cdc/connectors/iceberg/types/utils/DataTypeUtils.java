@@ -117,7 +117,7 @@ public class DataTypeUtils {
             case VARCHAR:
                 return org.apache.flink.table.api.DataTypes.VARCHAR(length);
             case BOOLEAN:
-                return org.apache.flink.table.api.DataTypes.BOOLEAN();
+                return org.apache.flink.table.api.DataTypes.STRING();
             case BINARY:
                 return org.apache.flink.table.api.DataTypes.BINARY(length);
             case VARBINARY:

@@ -311,8 +311,6 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
                 return RecordData::getFloat;
             case DOUBLE:
                 return RecordData::getDouble;
-            case BOOLEAN:
-                return RecordData::getBoolean;
             case CHAR:
             case VARCHAR:
             case DATE:
@@ -320,6 +318,7 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
             case TIMESTAMP_WITHOUT_TIME_ZONE:
             case TIMESTAMP_WITH_TIME_ZONE:
             case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
+            case BOOLEAN:
             case DECIMAL:
                 return (row, pos) -> StringData.fromString(row.getString(pos).toString());
             case BINARY:

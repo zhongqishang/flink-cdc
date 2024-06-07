@@ -82,9 +82,10 @@ class FlinkCdcTypeToType extends DataTypeDefaultVisitor<Type> {
         return Types.StringType.get();
     }
 
+    /** Boolean -> String. */
     @Override
     public Type visit(BooleanType booleanType) {
-        return Types.BooleanType.get();
+        return Types.StringType.get();
     }
 
     @Override
