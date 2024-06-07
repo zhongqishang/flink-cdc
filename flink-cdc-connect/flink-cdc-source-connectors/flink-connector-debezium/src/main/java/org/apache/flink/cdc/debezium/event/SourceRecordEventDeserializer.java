@@ -48,7 +48,7 @@ public abstract class SourceRecordEventDeserializer implements EventDeserializer
             LOG.trace("Process data change record: {}", record);
             return deserializeDataChangeRecord(record);
         } else if (isSchemaChangeRecord(record)) {
-            LOG.trace("Process schema change record: {}", record);
+            LOG.info("Process schema change record: {}", record);
             return deserializeSchemaChangeRecord(record);
         } else {
             LOG.trace("Ignored other record: {}", record);
