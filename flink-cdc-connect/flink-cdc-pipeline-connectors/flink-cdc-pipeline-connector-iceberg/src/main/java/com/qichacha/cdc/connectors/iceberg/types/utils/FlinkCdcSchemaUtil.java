@@ -51,9 +51,9 @@ public class FlinkCdcSchemaUtil {
                         .toArray(DataField[]::new);
 
         RowType rowType = DataTypes.ROW(fields);
-        Type converted = rowType.accept(new FlinkCdcTypeToType(rowType));
+        Type converted = rowType.accept(new FlinkCdcTypeToTypeString(rowType));
         Schema icebergSchema = new Schema(converted.asStructType().fields());
-        if (schema.primaryKeys() != null && schema.primaryKeys().size() > 0) {
+        if (schema.primaryKeys() != null && !schema.primaryKeys().isEmpty()) {
             return freshIdentifierFieldIds(icebergSchema, schema.primaryKeys());
         } else {
             return icebergSchema;

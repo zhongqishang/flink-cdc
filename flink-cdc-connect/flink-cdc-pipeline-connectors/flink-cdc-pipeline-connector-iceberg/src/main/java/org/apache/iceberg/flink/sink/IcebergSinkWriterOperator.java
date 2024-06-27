@@ -299,18 +299,13 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
     private RecordDataGetter<?> createNotNullConverter(
             org.apache.flink.cdc.common.types.DataType dataType) {
         switch (dataType.getTypeRoot()) {
-            case TINYINT:
-                return (row, pos) -> (int) row.getByte(pos);
-            case SMALLINT:
-                return (row, pos) -> (int) row.getShort(pos);
             case INTEGER:
                 return RecordData::getInt;
+            case SMALLINT:
+            case TINYINT:
             case BIGINT:
-                return RecordData::getLong;
             case FLOAT:
-                return RecordData::getFloat;
             case DOUBLE:
-                return RecordData::getDouble;
             case CHAR:
             case VARCHAR:
             case DATE:
