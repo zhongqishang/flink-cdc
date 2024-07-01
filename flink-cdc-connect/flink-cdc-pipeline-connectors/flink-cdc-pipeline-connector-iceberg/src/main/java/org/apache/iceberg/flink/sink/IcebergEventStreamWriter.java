@@ -86,7 +86,7 @@ public class IcebergEventStreamWriter<T> extends AbstractStreamOperator<TableWri
 
     @Override
     public void prepareSnapshotPreBarrier(long checkpointId) throws Exception {
-        flush();
+        flush(checkpointId);
         this.writer = taskWriterFactory.create();
     }
 
@@ -113,7 +113,7 @@ public class IcebergEventStreamWriter<T> extends AbstractStreamOperator<TableWri
         // Note that if the task is not closed after calling endInput, checkpoint may be triggered
         // again causing files to be sent repeatedly, the writer is marked as null after the last
         // file is sent to guard against duplicated writes.
-        flush();
+        flush(IcebergStreamWriter.END_INPUT_CHECKPOINT_ID);
     }
 
     @Override
@@ -126,7 +126,7 @@ public class IcebergEventStreamWriter<T> extends AbstractStreamOperator<TableWri
     }
 
     /** close all open files and emit files to downstream committer operator. */
-    public void flush() throws IOException {
+    public void flush(long checkpointId) throws IOException {
         if (writer == null) {
             return;
         }
@@ -134,7 +134,7 @@ public class IcebergEventStreamWriter<T> extends AbstractStreamOperator<TableWri
         long startNano = System.nanoTime();
         WriteResult result = writer.complete();
         writerMetrics.updateFlushResult(result);
-        output.collect(new StreamRecord<>(new TableWriteResult(tableId, result)));
+        output.collect(new StreamRecord<>(new TableWriteResult(checkpointId, tableId, result)));
         writerMetrics.flushDuration(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNano));
 
         // Set writer to null to prevent duplicate flushes in the corner case of

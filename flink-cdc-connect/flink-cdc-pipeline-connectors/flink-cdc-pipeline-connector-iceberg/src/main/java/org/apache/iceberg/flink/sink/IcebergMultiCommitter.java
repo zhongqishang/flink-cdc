@@ -35,7 +35,6 @@ import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.flink.CatalogLoader;
 import org.apache.iceberg.flink.TableLoader;
-import org.apache.iceberg.io.WriteResult;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -106,15 +105,20 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
 
     @Override
     public void processElement(StreamRecord<TableWriteResult> element) throws Exception {
-        StreamRecord<WriteResult> streamRecord =
-                new StreamRecord<>(element.getValue().getWriteResult(), element.getTimestamp());
-        TableIdentifier tableId = element.getValue().getTableId();
+        TableWriteResult tableWriteResult = element.getValue();
+        TableIdentifier tableId = tableWriteResult.getTableId();
         IcebergFilesCommitter committer =
-                committers.computeIfAbsent(tableId, k -> createIcebergFileCommiter(tableId));
+                committers.computeIfAbsent(tableId, k -> createIcebergFileCommitter(tableId));
+        StreamRecord<FlinkWriteResult> streamRecord =
+                new StreamRecord<>(
+                        new FlinkWriteResult(
+                                tableWriteResult.getCheckpointId(),
+                                tableWriteResult.getWriteResult()),
+                        element.getTimestamp());
         committer.processElement(streamRecord);
     }
 
-    private IcebergFilesCommitter createIcebergFileCommiter(TableIdentifier tableId) {
+    private IcebergFilesCommitter createIcebergFileCommitter(TableIdentifier tableId) {
         if (catalog == null) {
             catalog = catalogLoader.loadCatalog();
         }

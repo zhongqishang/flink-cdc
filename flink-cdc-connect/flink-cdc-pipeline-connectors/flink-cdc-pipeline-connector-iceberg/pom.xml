@@ -30,7 +30,7 @@
     <artifactId>flink-cdc-pipeline-connector-iceberg</artifactId>
 
     <properties>
-        <iceberg.connector.version>1.5.0</iceberg.connector.version>
+        <iceberg.connector.version>1.5.2</iceberg.connector.version>
     </properties>
 
     <dependencies>

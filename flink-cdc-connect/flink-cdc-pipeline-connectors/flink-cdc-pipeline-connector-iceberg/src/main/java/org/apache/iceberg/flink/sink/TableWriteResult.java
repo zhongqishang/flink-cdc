@@ -25,13 +25,18 @@ import org.apache.iceberg.io.WriteResult;
 /** WriteResult wrapper. */
 public class TableWriteResult {
 
+    private final long checkpointId;
     private final TableIdentifier tableId;
-
     private final WriteResult writeResult;
 
-    public TableWriteResult(TableIdentifier tableId, WriteResult writeResult) {
+    public TableWriteResult(long checkpointId, TableIdentifier tableId, WriteResult writeResult) {
+        this.checkpointId = checkpointId;
         this.tableId = tableId;
         this.writeResult = writeResult;
+    }
+
+    public long getCheckpointId() {
+        return checkpointId;
     }
 
     public TableIdentifier getTableId() {
