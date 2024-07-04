@@ -68,6 +68,8 @@ public final class SchemaChangeEventSerializer extends TypeSerializerSingleton<S
             return AddColumnEventSerializer.INSTANCE.copy((AddColumnEvent) from);
         } else if (from instanceof DropColumnEvent) {
             return DropColumnEventSerializer.INSTANCE.copy((DropColumnEvent) from);
+        } else if (from instanceof TruncateTableEvent) {
+            return TruncateTableEventSerializer.INSTANCE.copy((TruncateTableEvent) from);
         } else {
             throw new IllegalArgumentException("Unknown schema change event: " + from);
         }
