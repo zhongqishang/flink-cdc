@@ -106,7 +106,7 @@ public class IcebergMetadataApplier implements MetadataApplier {
             Table table = catalog.loadTable(tableIdentifier);
             Types.StructType struct = table.schema().asStruct();
             for (String columnName : createTableEvent.getSchema().getColumnNames()) {
-                if (struct.fieldType(columnName) == null) {
+                if (struct.field(columnName) == null) {
                     LOG.warn("Column {} will not be found in iceberg schema.", columnName);
                 }
             }
@@ -186,14 +186,21 @@ public class IcebergMetadataApplier implements MetadataApplier {
         TableIdentifier tableIdentifier =
                 TableIdentifier.of(tableId.getSchemaName(), tableId.getTableName());
         Table loadTable = catalog.loadTable(tableIdentifier);
-        Transaction transaction = loadTable.newTransaction();
-        UpdateSchema pendingUpdate = transaction.updateSchema();
-
         // Filter exists column
         List<String> columns =
                 dropColumnEvent.getDroppedColumnNames().stream()
-                        .filter(dropCol -> loadTable.schema().asStruct().fieldType(dropCol) != null)
+                        .filter(dropCol -> loadTable.schema().asStruct().field(dropCol) != null)
                         .collect(Collectors.toList());
+
+        if (columns.isEmpty()) {
+            LOG.info(
+                    "Skip execute, Schema not include columns : {}",
+                    dropColumnEvent.getDroppedColumnNames());
+            return;
+        }
+
+        Transaction transaction = loadTable.newTransaction();
+        UpdateSchema pendingUpdate = transaction.updateSchema();
 
         for (String dropColumn : columns) {
             pendingUpdate.deleteColumn(dropColumn);
