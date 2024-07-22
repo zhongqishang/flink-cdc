@@ -32,7 +32,6 @@ import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.common.sink.MetadataApplier;
 import org.apache.flink.cdc.common.types.DataType;
 
-import com.qichacha.cdc.connectors.iceberg.types.utils.DataTypeUtils;
 import com.qichacha.cdc.connectors.iceberg.types.utils.FlinkCdcSchemaUtil;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Table;
@@ -43,7 +42,6 @@ import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.flink.CatalogLoader;
-import org.apache.iceberg.flink.FlinkSchemaUtil;
 import org.apache.iceberg.types.Type;
 import org.apache.iceberg.types.Types;
 import org.slf4j.Logger;
@@ -251,12 +249,13 @@ public class IcebergMetadataApplier implements MetadataApplier {
 
         for (Map.Entry<String, DataType> renameColumn : columns.entrySet()) {
             String columnName = renameColumn.getKey();
-            Type icebergType =
-                    FlinkSchemaUtil.convert(
-                            DataTypeUtils.toFlinkQccDataType(renameColumn.getValue())
-                                    .getLogicalType());
+            DataType dataType = renameColumn.getValue();
+            Type icebergType = FlinkCdcSchemaUtil.convert(dataType);
+            // Miss comment
             pendingUpdate.updateColumn(columnName, icebergType.asPrimitiveType());
-            pendingUpdate.makeColumnOptional(columnName);
+            if (dataType.isNullable()) {
+                pendingUpdate.makeColumnOptional(columnName);
+            }
         }
         pendingUpdate.commit();
         transaction.commitTransaction();
