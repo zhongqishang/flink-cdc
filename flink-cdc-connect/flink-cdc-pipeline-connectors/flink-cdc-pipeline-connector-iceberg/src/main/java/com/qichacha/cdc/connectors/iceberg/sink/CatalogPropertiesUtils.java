@@ -29,12 +29,16 @@ public class CatalogPropertiesUtils {
     public static Map<String, String> getProperties(String database) {
         ImmutableMap.Builder<String, String> properties = ImmutableMap.builder();
         properties.put("catalog-database", database);
-        properties.put("uri", "thrift://localhost:9083");
-        properties.put("hive-conf-dir", "/opt/hadoop-2.10.2/etc/hadoop");
+        properties.put(
+                "uri", "thrift://hd-021.ld-hadoop.com:9083,thrift://hd-022.ld-hadoop.com:9083");
         properties.put("write-format", "parquet");
         properties.put("write.upsert.enabled", "true");
         properties.put("overwrite-enabled", "false");
         properties.put("engine.hive.enabled", "true");
+        properties.put("write.metadata.metrics.default", "full");
+        properties.put("write.target-file-size-bytes", "268435456");
+        properties.put("write.parquet.compression-codec", "zstd");
+        properties.put("self-optimizing.group", "flinkGroup");
         return properties.build();
     }
 }
