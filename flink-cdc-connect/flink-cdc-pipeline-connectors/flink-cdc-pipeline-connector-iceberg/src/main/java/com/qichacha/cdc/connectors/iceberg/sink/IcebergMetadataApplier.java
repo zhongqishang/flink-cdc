@@ -151,9 +151,7 @@ public class IcebergMetadataApplier implements MetadataApplier {
             // we will ignore position information, and always add the column to the last.
             // The reason is that ...
             Column column = columnWithPosition.getAddColumn();
-            Type icebergType =
-                    FlinkSchemaUtil.convert(
-                            DataTypeUtils.toFlinkQccDataType(column.getType()).getLogicalType());
+            Type icebergType = FlinkCdcSchemaUtil.convert(column.getType());
             if (column.getType().isNullable()) {
                 pendingUpdate.addColumn(column.getName(), icebergType);
             } else {

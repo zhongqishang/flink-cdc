@@ -21,6 +21,7 @@ package com.qichacha.cdc.connectors.iceberg.types.utils;
 
 import org.apache.flink.cdc.common.schema.Column;
 import org.apache.flink.cdc.common.types.DataField;
+import org.apache.flink.cdc.common.types.DataType;
 import org.apache.flink.cdc.common.types.DataTypes;
 import org.apache.flink.cdc.common.types.RowType;
 
@@ -58,6 +59,16 @@ public class FlinkCdcSchemaUtil {
         } else {
             return icebergSchema;
         }
+    }
+
+    /**
+     * Convert a {@link DataType Flink type} to a {@link Type}.
+     *
+     * @param dataType a FlinkType
+     * @return the equivalent Iceberg type
+     */
+    public static Type convert(DataType dataType) {
+        return dataType.accept(new FlinkCdcTypeToTypeString());
     }
 
     private static Schema freshIdentifierFieldIds(Schema icebergSchema, List<String> primaryKeys) {
