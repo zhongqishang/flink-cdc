@@ -143,7 +143,7 @@ public class SyncTiDBTest {
                 schemaOperatorTranslator.translate(
                         source,
                         parallelism,
-                        new IcebergMetadataApplier(catalogLoader),
+                        new IcebergMetadataApplier(catalogLoader, catalogMap),
                         Collections.emptyList());
 
         OperatorIDGenerator schemaOperatorIDGenerator =

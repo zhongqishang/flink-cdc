@@ -57,11 +57,13 @@ public class IcebergMetadataApplier implements MetadataApplier {
     private static final Logger LOG = LoggerFactory.getLogger(IcebergMetadataApplier.class);
 
     private final CatalogLoader catalogLoader;
+    private final Map<String, String> properties;
     private transient Catalog catalog;
     private boolean isOpened = false;
 
-    public IcebergMetadataApplier(CatalogLoader catalogLoader) {
+    public IcebergMetadataApplier(CatalogLoader catalogLoader, Map<String, String> properties) {
         this.catalogLoader = catalogLoader;
+        this.properties = properties;
     }
 
     @Override
@@ -114,10 +116,7 @@ public class IcebergMetadataApplier implements MetadataApplier {
         org.apache.iceberg.Schema icebergSchema = FlinkCdcSchemaUtil.convert(schema);
         try {
             catalog.createTable(
-                    tableIdentifier,
-                    icebergSchema,
-                    PartitionSpec.unpartitioned(),
-                    CatalogPropertiesUtils.getProperties(tableId.getSchemaName()));
+                    tableIdentifier, icebergSchema, PartitionSpec.unpartitioned(), properties);
         } catch (AlreadyExistsException e) {
             LOG.warn("Failed to apply create table, event: {}", createTableEvent, e);
         }

@@ -143,7 +143,7 @@ public class Sync {
                 schemaOperatorTranslator.translate(
                         source,
                         parallelism,
-                        new IcebergMetadataApplier(catalogLoader),
+                        new IcebergMetadataApplier(catalogLoader, catalogMap),
                         Arrays.asList(
                                 new RouteDef("test.products", "ods_iceberg.products", null),
                                 new RouteDef("test.products_1", "ods_iceberg.products_1", null)));

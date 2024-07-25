@@ -39,6 +39,7 @@ public class CatalogPropertiesUtils {
         properties.put("write.target-file-size-bytes", "268435456");
         properties.put("write.parquet.compression-codec", "zstd");
         properties.put("self-optimizing.group", "flinkGroup");
+        properties.put("write.metadata.delete-after-commit.enabled", "true");
         return properties.build();
     }
 }
