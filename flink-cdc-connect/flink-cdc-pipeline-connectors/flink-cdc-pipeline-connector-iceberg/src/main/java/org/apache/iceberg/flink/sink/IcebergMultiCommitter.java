@@ -19,6 +19,9 @@
 
 package org.apache.iceberg.flink.sink;
 
+import org.apache.flink.api.common.state.ListState;
+import org.apache.flink.api.common.state.ListStateDescriptor;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.graph.StreamConfig;
@@ -39,10 +42,15 @@ import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 
-/** Multi Committer. */
+/**
+ * Multi Committer.
+ */
 public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
         implements OneInputStreamOperator<TableWriteResult, Void>, BoundedOneInput {
 
@@ -61,6 +69,11 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
     private StateInitializationContext context;
     private StreamTaskStateInitializer streamTaskStateManager;
 
+    private static final ListStateDescriptor<TableIdentifier> TABLE_ID_DESCRIPTOR =
+            new ListStateDescriptor<>(
+                    "iceberg-multi-committer-table-id", TypeInformation.of(TableIdentifier.class));
+    private transient ListState<TableIdentifier> tableIdListState;
+    private final Set<TableIdentifier> tableIds = new HashSet<>();
     private final Map<TableIdentifier, IcebergFilesCommitter> committers = Maps.newConcurrentMap();
 
     IcebergMultiCommitter(
@@ -79,8 +92,21 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
     @Override
     public void initializeState(StreamTaskStateInitializer streamTaskStateManager)
             throws Exception {
-        super.initializeState(streamTaskStateManager);
         this.streamTaskStateManager = streamTaskStateManager;
+        super.initializeState(streamTaskStateManager);
+    }
+
+    @Override
+    public void initializeState(StateInitializationContext context) throws Exception {
+        super.initializeState(context);
+        this.tableIdListState = context.getOperatorStateStore().getListState(TABLE_ID_DESCRIPTOR);
+        Iterable<TableIdentifier> tableIdentifiers = tableIdListState.get();
+        for (TableIdentifier tableIdentifier : tableIdentifiers) {
+            IcebergFilesCommitter committer =
+                    committers.computeIfAbsent(
+                            tableIdentifier, k -> createIcebergFileCommitter(tableIdentifier));
+            committer.initializeState(context);
+        }
     }
 
     @Override
@@ -107,6 +133,7 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
     public void processElement(StreamRecord<TableWriteResult> element) throws Exception {
         TableWriteResult tableWriteResult = element.getValue();
         TableIdentifier tableId = tableWriteResult.getTableId();
+        tableIds.add(tableId);
         IcebergFilesCommitter committer =
                 committers.computeIfAbsent(tableId, k -> createIcebergFileCommitter(tableId));
         StreamRecord<FlinkWriteResult> streamRecord =
@@ -149,6 +176,8 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
     @Override
     public void snapshotState(StateSnapshotContext context) throws Exception {
         super.snapshotState(context);
+        tableIdListState.clear();
+        tableIdListState.addAll(new ArrayList<>(tableIds));
         for (IcebergFilesCommitter committer : committers.values()) {
             committer.snapshotState(context);
         }
