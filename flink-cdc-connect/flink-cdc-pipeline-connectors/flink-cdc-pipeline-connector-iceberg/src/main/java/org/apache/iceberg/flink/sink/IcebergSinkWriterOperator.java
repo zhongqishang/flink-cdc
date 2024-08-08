@@ -33,6 +33,7 @@ import org.apache.flink.cdc.common.utils.SchemaUtils;
 import org.apache.flink.cdc.runtime.operators.sink.SchemaEvolutionClient;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.StateInitializationContext;
+import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.BoundedOneInput;
@@ -80,7 +81,7 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
     private final boolean upsertMode;
     private static final Map<org.apache.flink.cdc.common.types.DataType, RecordDataGetter<?>>
             CONVERTERS = new ConcurrentHashMap<>();
-    private long flushCheckpointId = Integer.MAX_VALUE;
+    private long previousCheckpointId = -1;
 
     public IcebergSinkWriterOperator(
             OperatorID schemaOperatorID,
@@ -127,9 +128,16 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
 
     @Override
     public void prepareSnapshotPreBarrier(long checkpointId) throws Exception {
+        this.previousCheckpointId = checkpointId;
         for (IcebergEventStreamWriter<RowData> copySinkWriter : writes.values()) {
             copySinkWriter.prepareSnapshotPreBarrier(checkpointId);
         }
+    }
+
+    @Override
+    public void snapshotState(StateSnapshotContext context) throws Exception {
+        super.snapshotState(context);
+        this.previousCheckpointId = context.getCheckpointId();
     }
 
     @Override
@@ -150,7 +158,7 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
                 schemaMaps.put(schemaChangeEvent.tableId(), applySchemaChangeEvent);
                 IcebergEventStreamWriter<RowData> remove = writes.remove(tableId);
                 if (remove != null) {
-                    remove.flush(flushCheckpointId++);
+                    remove.flush(previousCheckpointId);
                     remove.close();
                 }
             }
@@ -160,7 +168,10 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
             if (streamWriter == null) {
                 LOG.warn("No IcebergEventStreamWriter found for table {}", tableId);
             } else {
-                streamWriter.flush(flushCheckpointId++);
+                LOG.warn(
+                        "IcebergEventStreamWriter flush with previous checkpointId {}",
+                        previousCheckpointId);
+                streamWriter.flush(previousCheckpointId);
             }
             schemaEvolutionClient.notifyFlushSuccess(
                     getRuntimeContext().getIndexOfThisSubtask(), tableId);

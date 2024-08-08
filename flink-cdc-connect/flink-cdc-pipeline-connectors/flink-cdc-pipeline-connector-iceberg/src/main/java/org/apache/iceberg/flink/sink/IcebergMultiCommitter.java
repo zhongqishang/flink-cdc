@@ -46,11 +46,8 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
 
-/**
- * Multi Committer.
- */
+/** Multi Committer. */
 public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
         implements OneInputStreamOperator<TableWriteResult, Void>, BoundedOneInput {
 
@@ -65,8 +62,6 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
     private final String branch;
 
     private final Integer workerPoolSize;
-    private transient ExecutorService workerPool;
-    private StateInitializationContext context;
     private StreamTaskStateInitializer streamTaskStateManager;
 
     private static final ListStateDescriptor<TableIdentifier> TABLE_ID_DESCRIPTOR =
@@ -106,6 +101,9 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
                     committers.computeIfAbsent(
                             tableIdentifier, k -> createIcebergFileCommitter(tableIdentifier));
             committer.initializeState(context);
+            LOG.info(
+                    "IcebergFilesCommitter initializeState tableId : {}",
+                    tableIdentifier.toString());
         }
     }
 
