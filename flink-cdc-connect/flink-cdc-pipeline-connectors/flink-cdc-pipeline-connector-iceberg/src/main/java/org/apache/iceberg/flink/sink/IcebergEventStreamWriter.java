@@ -46,7 +46,6 @@ public class IcebergEventStreamWriter<T> extends AbstractStreamOperator<TableWri
     private transient int subTaskId;
     private transient int attemptId;
     private transient IcebergStreamWriterMetrics writerMetrics;
-    private transient boolean hasWriter = false;
 
     IcebergEventStreamWriter(TableIdentifier tableId) {
         this.tableId = tableId;
@@ -62,11 +61,6 @@ public class IcebergEventStreamWriter<T> extends AbstractStreamOperator<TableWri
         this.taskWriterFactory.initialize(subTaskId, attemptId);
         // Initialize the task writer.
         this.writer = taskWriterFactory.create();
-        this.hasWriter = true;
-    }
-
-    public boolean hasWriter() {
-        return hasWriter;
     }
 
     @Override
@@ -81,7 +75,6 @@ public class IcebergEventStreamWriter<T> extends AbstractStreamOperator<TableWri
 
         // Initialize the task writer.
         this.writer = taskWriterFactory.create();
-        this.hasWriter = true;
     }
 
     @Override
@@ -101,7 +94,6 @@ public class IcebergEventStreamWriter<T> extends AbstractStreamOperator<TableWri
         if (writer != null) {
             writer.close();
             writer = null;
-            hasWriter = false;
         }
     }
 
@@ -140,6 +132,5 @@ public class IcebergEventStreamWriter<T> extends AbstractStreamOperator<TableWri
         // Set writer to null to prevent duplicate flushes in the corner case of
         // prepareSnapshotPreBarrier happening after endInput.
         writer = null;
-        hasWriter = false;
     }
 }

@@ -55,6 +55,8 @@ import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.flink.CatalogLoader;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -65,6 +67,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWriteResult>
         implements OneInputStreamOperator<Event, TableWriteResult>, BoundedOneInput {
 
+    protected static final Logger LOG = LoggerFactory.getLogger(IcebergSinkWriterOperator.class);
     private final CatalogLoader catalogLoader;
     private transient Catalog catalog;
 
@@ -156,15 +159,10 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
                         SchemaUtils.applySchemaChangeEvent(
                                 schemaMaps.get(tableId), schemaChangeEvent);
                 schemaMaps.put(schemaChangeEvent.tableId(), applySchemaChangeEvent);
-                IcebergEventStreamWriter<RowData> remove = writes.remove(tableId);
-                if (remove != null) {
-                    remove.flush(previousCheckpointId);
-                    remove.close();
-                }
             }
         } else if (event instanceof FlushEvent) {
             TableId tableId = ((FlushEvent) event).getTableId();
-            IcebergEventStreamWriter<RowData> streamWriter = writes.get(tableId);
+            IcebergEventStreamWriter<RowData> streamWriter = writes.remove(tableId);
             if (streamWriter == null) {
                 LOG.warn("No IcebergEventStreamWriter found for table {}", tableId);
             } else {
@@ -172,21 +170,18 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
                         "IcebergEventStreamWriter flush with previous checkpointId {}",
                         previousCheckpointId);
                 streamWriter.flush(previousCheckpointId);
+                streamWriter.close();
             }
             schemaEvolutionClient.notifyFlushSuccess(
                     getRuntimeContext().getIndexOfThisSubtask(), tableId);
             LOG.info(
                     "Notify Flush Success, SubtaskId is {}",
                     getRuntimeContext().getIndexOfThisSubtask());
-
         } else if (event instanceof DataChangeEvent) {
             TableId tableId = ((DataChangeEvent) event).tableId();
             checkLatestSchema(tableId);
             IcebergEventStreamWriter<RowData> streamWriter =
                     writes.computeIfAbsent(tableId, k -> createCopySinkWriter(tableId));
-            if (!streamWriter.hasWriter()) {
-                recreate(tableId);
-            }
             DataChangeEvent dataChangeEvent = (DataChangeEvent) event;
             serializerRecord(streamWriter, dataChangeEvent);
         }
@@ -200,6 +195,7 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
     }
 
     private IcebergEventStreamWriter<RowData> createCopySinkWriter(TableId tableId) {
+        LOG.info("Create Sink writer tableId : {}", tableId);
         IcebergEventStreamWriter<RowData> streamWriter =
                 new IcebergEventStreamWriter<>(TableIdentifier.parse(tableId.identifier()));
         streamWriter.setTaskWriterFactory(createTaskWriterFactory(tableId));
@@ -224,12 +220,6 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
                 writeProperties,
                 equalityFieldIds,
                 upsertMode);
-    }
-
-    void recreate(TableId tableId) throws Exception {
-        Schema schema = schemaMaps.get(tableId);
-        LOG.info("Recreate {} writer schema is {}.", tableId.identifier(), schema);
-        writes.get(tableId).setTaskWriterFactory(createTaskWriterFactory(tableId));
     }
 
     /**
@@ -272,7 +262,6 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
     }
 
     private RowData serializerRecord(TableId tableId, RowKind rowKind, RecordData recordData) {
-
         if (!schemaMaps.containsKey(tableId)) {
             throw new RuntimeException("Table " + tableId + " does not exist");
         }

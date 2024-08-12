@@ -281,7 +281,12 @@ public class SchemaOperator extends AbstractStreamOperator<Event>
                     "Sending the FlushEvent for table {} in subtask {}.",
                     tableId,
                     getRuntimeContext().getIndexOfThisSubtask());
-            output.collect(new StreamRecord<>(new FlushEvent(tableId)));
+            Optional<TableId> routedTable = getRoutedTable(tableId);
+            if (routedTable.isPresent()) {
+                output.collect(new StreamRecord<>(new FlushEvent(routedTable.get())));
+            } else {
+                output.collect(new StreamRecord<>(new FlushEvent(tableId)));
+            }
             response.getSchemaChangeEvents().forEach(e -> output.collect(new StreamRecord<>(e)));
             // The request will block until flushing finished in each sink writer
             requestReleaseUpstream();
