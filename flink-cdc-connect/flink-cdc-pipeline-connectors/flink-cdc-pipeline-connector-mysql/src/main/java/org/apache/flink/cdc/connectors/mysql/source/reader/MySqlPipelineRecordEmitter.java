@@ -225,7 +225,9 @@ public class MySqlPipelineRecordEmitter extends MySqlRecordEmitter<Event> {
 
     private synchronized MySqlAntlrDdlParser getParser() {
         if (mySqlAntlrDdlParser == null) {
-            mySqlAntlrDdlParser = new MySqlAntlrDdlParser();
+            mySqlAntlrDdlParser =
+                    new MySqlAntlrDdlParser(
+                            true, false, true, null, Tables.TableFilter.includeAll());
         }
         return mySqlAntlrDdlParser;
     }

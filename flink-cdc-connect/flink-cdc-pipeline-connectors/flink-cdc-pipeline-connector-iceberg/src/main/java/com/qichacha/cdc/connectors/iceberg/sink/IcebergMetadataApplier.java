@@ -149,10 +149,11 @@ public class IcebergMetadataApplier implements MetadataApplier {
             // The reason is that ...
             Column column = columnWithPosition.getAddColumn();
             Type icebergType = FlinkCdcSchemaUtil.convert(column.getType());
+            String comment = column.getComment();
             if (column.getType().isNullable()) {
-                pendingUpdate.addColumn(column.getName(), icebergType);
+                pendingUpdate.addColumn(column.getName(), icebergType, comment);
             } else {
-                pendingUpdate.addRequiredColumn(column.getName(), icebergType);
+                pendingUpdate.addRequiredColumn(column.getName(), icebergType, comment);
             }
             AddColumnEvent.ColumnPosition position = columnWithPosition.getPosition();
             switch (position) {
