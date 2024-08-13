@@ -31,6 +31,7 @@ import org.apache.flink.cdc.common.schema.Column;
 import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.common.sink.MetadataApplier;
 import org.apache.flink.cdc.common.types.DataType;
+import org.apache.flink.util.FlinkRuntimeException;
 
 import com.qichacha.cdc.connectors.iceberg.types.utils.FlinkCdcSchemaUtil;
 import org.apache.iceberg.PartitionSpec;
@@ -40,6 +41,7 @@ import org.apache.iceberg.UpdateSchema;
 import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
+import org.apache.iceberg.exceptions.CommitFailedException;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.flink.CatalogLoader;
 import org.apache.iceberg.types.Type;
@@ -263,16 +265,33 @@ public class IcebergMetadataApplier implements MetadataApplier {
     }
 
     private void applyTruncateTable(TruncateTableEvent truncateTableEvent) {
+        long start = System.currentTimeMillis();
         TableId tableId = truncateTableEvent.tableId();
         TableIdentifier tableIdentifier =
                 TableIdentifier.of(tableId.getSchemaName(), tableId.getTableName());
-        Table loadTable = catalog.loadTable(tableIdentifier);
-        Transaction transaction = loadTable.newTransaction();
-        transaction
-                .newDelete()
-                .set("app.id", "cdc truncate trigger")
-                .deleteFromRowFilter(Expressions.alwaysTrue())
-                .commit();
-        transaction.commitTransaction();
+        int i = 0;
+        for (; i < 3; i++) {
+            try {
+                Table loadTable = catalog.loadTable(tableIdentifier);
+                Transaction transaction = loadTable.newTransaction();
+                transaction
+                        .newDelete()
+                        .set("app.id", "cdc truncate trigger")
+                        .deleteFromRowFilter(Expressions.alwaysTrue())
+                        .commit();
+                transaction.commitTransaction();
+                break;
+            } catch (CommitFailedException e) {
+                i++;
+            }
+        }
+        if (i == 3) {
+            throw new FlinkRuntimeException("Commit 3 times failed.");
+        }
+
+        LOG.info(
+                "Successful to apply truncate table, event: {}, cost : {}",
+                truncateTableEvent,
+                System.currentTimeMillis() - start);
     }
 }
