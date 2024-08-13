@@ -28,11 +28,18 @@ public class TableWriteResult {
     private final long checkpointId;
     private final TableIdentifier tableId;
     private final WriteResult writeResult;
+    private final boolean commit;
 
     public TableWriteResult(long checkpointId, TableIdentifier tableId, WriteResult writeResult) {
+        this(checkpointId, tableId, writeResult, false);
+    }
+
+    public TableWriteResult(
+            long checkpointId, TableIdentifier tableId, WriteResult writeResult, boolean commit) {
         this.checkpointId = checkpointId;
         this.tableId = tableId;
         this.writeResult = writeResult;
+        this.commit = commit;
     }
 
     public long getCheckpointId() {
@@ -45,5 +52,9 @@ public class TableWriteResult {
 
     public WriteResult getWriteResult() {
         return writeResult;
+    }
+
+    public boolean isCommit() {
+        return commit;
     }
 }

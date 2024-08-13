@@ -27,6 +27,7 @@ import org.apache.flink.cdc.common.event.FlushEvent;
 import org.apache.flink.cdc.common.event.OperationType;
 import org.apache.flink.cdc.common.event.SchemaChangeEvent;
 import org.apache.flink.cdc.common.event.TableId;
+import org.apache.flink.cdc.common.event.TruncateTableEvent;
 import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.common.types.DataType;
 import org.apache.flink.cdc.common.utils.SchemaUtils;
@@ -152,6 +153,14 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
             if (event instanceof CreateTableEvent) {
                 CreateTableEvent createTableEvent = (CreateTableEvent) event;
                 schemaMaps.put(createTableEvent.tableId(), createTableEvent.getSchema());
+            } else if (event instanceof TruncateTableEvent) {
+                output.collect(
+                        new StreamRecord<>(
+                                new TableWriteResult(
+                                        0,
+                                        TableIdentifier.parse(tableId.identifier()),
+                                        null,
+                                        true)));
             } else {
                 SchemaChangeEvent schemaChangeEvent = (SchemaChangeEvent) event;
                 checkLatestSchema(tableId);

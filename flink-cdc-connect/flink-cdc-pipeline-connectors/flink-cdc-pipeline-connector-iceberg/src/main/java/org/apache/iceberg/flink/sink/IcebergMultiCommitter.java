@@ -134,6 +134,16 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
         tableIds.add(tableId);
         IcebergFilesCommitter committer =
                 committers.computeIfAbsent(tableId, k -> createIcebergFileCommitter(tableId));
+
+        // Truncate table trigger
+        if (tableWriteResult.isCommit()) {
+            IcebergFilesCommitter remove = committers.remove(tableId);
+            // Will be cause org.apache.iceberg.exceptions.CommitFailedException: Cannot commit:
+            // remove.endInput();
+            remove.close();
+            return;
+        }
+
         StreamRecord<FlinkWriteResult> streamRecord =
                 new StreamRecord<>(
                         new FlinkWriteResult(

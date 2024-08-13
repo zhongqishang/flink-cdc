@@ -80,6 +80,8 @@ public class PrePartitionOperator extends AbstractStreamOperator<PartitioningEve
     public void processElement(StreamRecord<Event> element) throws Exception {
         Event event = element.getValue();
         if (event instanceof TruncateTableEvent) {
+            // broadcast will keep the last write result is truncate
+            broadcastEvent(event);
         } else if (event instanceof SchemaChangeEvent) {
             // Update hash function
             TableId tableId = ((SchemaChangeEvent) event).tableId();
