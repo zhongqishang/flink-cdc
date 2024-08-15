@@ -63,6 +63,7 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
 
     private final Integer workerPoolSize;
     private StreamTaskStateInitializer streamTaskStateManager;
+    private StateInitializationContext context;
 
     private static final ListStateDescriptor<TableIdentifier> TABLE_ID_DESCRIPTOR =
             new ListStateDescriptor<>(
@@ -94,13 +95,12 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
     @Override
     public void initializeState(StateInitializationContext context) throws Exception {
         super.initializeState(context);
+        this.context = context;
         this.tableIdListState = context.getOperatorStateStore().getListState(TABLE_ID_DESCRIPTOR);
         Iterable<TableIdentifier> tableIdentifiers = tableIdListState.get();
         for (TableIdentifier tableIdentifier : tableIdentifiers) {
-            IcebergFilesCommitter committer =
-                    committers.computeIfAbsent(
-                            tableIdentifier, k -> createIcebergFileCommitter(tableIdentifier));
-            committer.initializeState(context);
+            committers.computeIfAbsent(
+                    tableIdentifier, k -> createIcebergFileCommitter(tableIdentifier));
             LOG.info(
                     "IcebergFilesCommitter initializeState tableId : {}",
                     tableIdentifier.toString());
@@ -174,6 +174,7 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
             // initializeState.setAccessible(true);
             // initializeState.invoke(committer, context);
             committer.initializeState(streamTaskStateManager);
+            committer.initializeState(context);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -193,7 +194,7 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
 
     @Override
     public void notifyCheckpointComplete(long checkpointId) throws Exception {
-        // super.notifyCheckpointComplete(checkpointId);
+        super.notifyCheckpointComplete(checkpointId);
         for (IcebergFilesCommitter committer : committers.values()) {
             committer.notifyCheckpointComplete(checkpointId);
         }
