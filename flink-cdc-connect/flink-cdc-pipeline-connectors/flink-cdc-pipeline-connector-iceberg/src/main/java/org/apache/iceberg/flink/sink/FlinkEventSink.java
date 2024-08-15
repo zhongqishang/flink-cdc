@@ -19,7 +19,6 @@
 
 package org.apache.iceberg.flink.sink;
 
-import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.cdc.common.event.Event;
@@ -75,23 +74,6 @@ public class FlinkEventSink {
     private FlinkEventSink() {}
 
     /**
-     * Initialize a {@link Builder} to export the data from generic input data stream into iceberg
-     * table. We use {@link RowData} inside the sink connector, so users need to provide a mapper
-     * function and a {@link TypeInformation} to convert those generic records to a RowData
-     * DataStream.
-     *
-     * @param input the generic source input data stream.
-     * @param mapper function to convert the generic data to {@link RowData}
-     * @param outputType to define the {@link TypeInformation} for the input data.
-     * @param <T> the data type of records.
-     * @return {@link Builder} to connect the iceberg table.
-     */
-    public static <T> Builder builderFor(
-            DataStream<T> input, MapFunction<T, Event> mapper, TypeInformation<Event> outputType) {
-        return new Builder().forMapperOutputType(input, mapper, outputType);
-    }
-
-    /**
      * Initialize a {@link Builder} to export the data from input data stream with {@link RowData}s
      * into iceberg table.
      *
@@ -117,31 +99,6 @@ public class FlinkEventSink {
 
         private Builder forEvent(DataStream<Event> newRowDataInput) {
             this.inputCreator = ignored -> newRowDataInput;
-            return this;
-        }
-
-        private <T> Builder forMapperOutputType(
-                DataStream<T> input,
-                MapFunction<T, Event> mapper,
-                TypeInformation<Event> outputType) {
-            this.inputCreator =
-                    newUidPrefix -> {
-                        // Input stream order is crucial for some situation(e.g. in cdc case).
-                        // Therefore, we
-                        // need to set the parallelism
-                        // of map operator same as its input to keep map operator chaining its
-                        // input, and avoid
-                        // rebalanced by default.
-                        SingleOutputStreamOperator<Event> inputStream =
-                                input.map(mapper, outputType)
-                                        .setParallelism(input.getParallelism());
-                        if (newUidPrefix != null) {
-                            inputStream
-                                    .name(operatorName(newUidPrefix))
-                                    .uid(newUidPrefix + "-mapper");
-                        }
-                        return inputStream;
-                    };
             return this;
         }
 
