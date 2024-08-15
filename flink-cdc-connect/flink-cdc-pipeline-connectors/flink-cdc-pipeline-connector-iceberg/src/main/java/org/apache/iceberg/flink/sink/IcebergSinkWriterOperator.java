@@ -85,7 +85,7 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
     private final boolean upsertMode;
     private static final Map<org.apache.flink.cdc.common.types.DataType, RecordDataGetter<?>>
             CONVERTERS = new ConcurrentHashMap<>();
-    private long previousCheckpointId = -1;
+    private long schemaChangeCheckpointId = Integer.MIN_VALUE;
 
     public IcebergSinkWriterOperator(
             OperatorID schemaOperatorID,
@@ -132,7 +132,6 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
 
     @Override
     public void prepareSnapshotPreBarrier(long checkpointId) throws Exception {
-        this.previousCheckpointId = checkpointId;
         for (IcebergEventStreamWriter<RowData> copySinkWriter : writes.values()) {
             copySinkWriter.prepareSnapshotPreBarrier(checkpointId);
         }
@@ -141,7 +140,6 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
     @Override
     public void snapshotState(StateSnapshotContext context) throws Exception {
         super.snapshotState(context);
-        this.previousCheckpointId = context.getCheckpointId();
     }
 
     @Override
@@ -177,8 +175,8 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
             } else {
                 LOG.warn(
                         "IcebergEventStreamWriter flush with previous checkpointId {}",
-                        previousCheckpointId);
-                streamWriter.flush(previousCheckpointId);
+                        schemaChangeCheckpointId);
+                streamWriter.flush(schemaChangeCheckpointId++);
                 streamWriter.close();
             }
             schemaEvolutionClient.notifyFlushSuccess(
