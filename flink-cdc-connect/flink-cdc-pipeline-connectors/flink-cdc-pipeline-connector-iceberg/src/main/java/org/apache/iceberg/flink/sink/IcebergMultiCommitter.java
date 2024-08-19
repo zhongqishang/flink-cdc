@@ -23,6 +23,7 @@ import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.runtime.state.StateInitializationContext;
+import org.apache.flink.runtime.state.StateInitializationContextImpl;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
@@ -105,6 +106,14 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
                     "IcebergFilesCommitter initializeState tableId : {}",
                     tableIdentifier.toString());
         }
+
+        this.context =
+                new StateInitializationContextImpl(
+                        null,
+                        context.getOperatorStateStore(),
+                        null,
+                        null,
+                        context.getRawOperatorStateInputs());
     }
 
     @Override
@@ -158,8 +167,8 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
             catalog = catalogLoader.loadCatalog();
         }
         Table table = catalog.loadTable(tableId);
-        IcebergFilesCommitter committer =
-                new IcebergFilesCommitter(
+        IcebergFilesExtendCommitter committer =
+                new IcebergFilesExtendCommitter(
                         TableLoader.fromCatalog(catalogLoader, tableId),
                         replacePartitions,
                         snapshotProperties,
@@ -169,12 +178,8 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
         committer.setup(getContainingTask(), getOperatorConfig(), output);
         try {
             committer.open();
-            // Method initializeState = committer.getClass().getMethod("initializeState",
-            // StateInitializationContext.class);
-            // initializeState.setAccessible(true);
-            // initializeState.invoke(committer, context);
             committer.initializeState(streamTaskStateManager);
-            committer.initializeState(context);
+            committer.initializeStateWithInit(context);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
