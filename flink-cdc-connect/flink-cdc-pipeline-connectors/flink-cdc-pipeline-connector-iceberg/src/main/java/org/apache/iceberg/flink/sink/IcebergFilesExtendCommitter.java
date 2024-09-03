@@ -22,20 +22,29 @@ package org.apache.iceberg.flink.sink;
 import org.apache.flink.runtime.state.StateInitializationContext;
 
 import org.apache.iceberg.PartitionSpec;
+import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.flink.TableLoader;
 
 import java.util.Map;
 
 /** IcebergFilesCommitter Extend. */
-public class IcebergFilesExtendCommitter extends IcebergFilesCommitter {
+public class IcebergFilesExtendCommitter extends IcebergTableFilesCommitter {
     IcebergFilesExtendCommitter(
+            TableIdentifier identifier,
             TableLoader tableLoader,
             boolean replacePartitions,
             Map<String, String> snapshotProperties,
             Integer workerPoolSize,
             String branch,
             PartitionSpec spec) {
-        super(tableLoader, replacePartitions, snapshotProperties, workerPoolSize, branch, spec);
+        super(
+                identifier,
+                tableLoader,
+                replacePartitions,
+                snapshotProperties,
+                workerPoolSize,
+                branch,
+                spec);
     }
 
     @Override

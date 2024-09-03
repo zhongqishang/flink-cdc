@@ -71,7 +71,8 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
                     "iceberg-multi-committer-table-id", TypeInformation.of(TableIdentifier.class));
     private transient ListState<TableIdentifier> tableIdListState;
     private final Set<TableIdentifier> tableIds = new HashSet<>();
-    private final Map<TableIdentifier, IcebergFilesCommitter> committers = Maps.newConcurrentMap();
+    private final Map<TableIdentifier, IcebergFilesExtendCommitter> committers =
+            Maps.newConcurrentMap();
 
     IcebergMultiCommitter(
             CatalogLoader catalogLoader,
@@ -131,7 +132,7 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
 
     @Override
     public void endInput() throws Exception {
-        for (IcebergFilesCommitter committer : committers.values()) {
+        for (IcebergFilesExtendCommitter committer : committers.values()) {
             committer.endInput();
         }
     }
@@ -141,12 +142,12 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
         TableWriteResult tableWriteResult = element.getValue();
         TableIdentifier tableId = tableWriteResult.getTableId();
         tableIds.add(tableId);
-        IcebergFilesCommitter committer =
+        IcebergFilesExtendCommitter committer =
                 committers.computeIfAbsent(tableId, k -> createIcebergFileCommitter(tableId));
 
         // Truncate table trigger
         if (tableWriteResult.isCommit()) {
-            IcebergFilesCommitter remove = committers.remove(tableId);
+            IcebergFilesExtendCommitter remove = committers.remove(tableId);
             // Will be cause org.apache.iceberg.exceptions.CommitFailedException: Cannot commit:
             // remove.endInput();
             remove.close();
@@ -162,13 +163,14 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
         committer.processElement(streamRecord);
     }
 
-    private IcebergFilesCommitter createIcebergFileCommitter(TableIdentifier tableId) {
+    private IcebergFilesExtendCommitter createIcebergFileCommitter(TableIdentifier tableId) {
         if (catalog == null) {
             catalog = catalogLoader.loadCatalog();
         }
         Table table = catalog.loadTable(tableId);
         IcebergFilesExtendCommitter committer =
                 new IcebergFilesExtendCommitter(
+                        tableId,
                         TableLoader.fromCatalog(catalogLoader, tableId),
                         replacePartitions,
                         snapshotProperties,
@@ -192,7 +194,7 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
         super.snapshotState(context);
         tableIdListState.clear();
         tableIdListState.addAll(new ArrayList<>(tableIds));
-        for (IcebergFilesCommitter committer : committers.values()) {
+        for (IcebergFilesExtendCommitter committer : committers.values()) {
             committer.snapshotState(context);
         }
     }
@@ -200,7 +202,7 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
     @Override
     public void notifyCheckpointComplete(long checkpointId) throws Exception {
         super.notifyCheckpointComplete(checkpointId);
-        for (IcebergFilesCommitter committer : committers.values()) {
+        for (IcebergFilesExtendCommitter committer : committers.values()) {
             committer.notifyCheckpointComplete(checkpointId);
         }
     }
@@ -208,7 +210,7 @@ public class IcebergMultiCommitter extends AbstractStreamOperator<Void>
     @Override
     public void close() throws Exception {
         super.close();
-        for (IcebergFilesCommitter committer : committers.values()) {
+        for (IcebergFilesExtendCommitter committer : committers.values()) {
             committer.close();
         }
     }
