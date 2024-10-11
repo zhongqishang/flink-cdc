@@ -118,7 +118,11 @@ public class IcebergMetadataApplier implements MetadataApplier {
         org.apache.iceberg.Schema icebergSchema = FlinkCdcSchemaUtil.convert(schema);
         try {
             catalog.createTable(
-                    tableIdentifier, icebergSchema, PartitionSpec.unpartitioned(), properties);
+                    tableIdentifier,
+                    icebergSchema,
+                    PartitionSpec.unpartitioned(),
+                    // "hdfs://qcc/data/hive/warehouse/ods_iceberg_spider_company_entity.db/t_gongshang_entity_app_config",
+                    properties);
         } catch (AlreadyExistsException e) {
             LOG.warn("Failed to apply create table, event: {}", createTableEvent, e);
         }
@@ -145,7 +149,6 @@ public class IcebergMetadataApplier implements MetadataApplier {
 
         Transaction transaction = loadTable.newTransaction();
         UpdateSchema pendingUpdate = transaction.updateSchema();
-
         for (AddColumnEvent.ColumnWithPosition columnWithPosition : columnWithPositions) {
             // we will ignore position information, and always add the column to the last.
             // The reason is that ...
@@ -155,6 +158,8 @@ public class IcebergMetadataApplier implements MetadataApplier {
             if (column.getType().isNullable()) {
                 pendingUpdate.addColumn(column.getName(), icebergType, comment);
             } else {
+                LOG.warn("Add required column {}, default value is not valid.", column.getName());
+                pendingUpdate.allowIncompatibleChanges();
                 pendingUpdate.addRequiredColumn(column.getName(), icebergType, comment);
             }
             AddColumnEvent.ColumnPosition position = columnWithPosition.getPosition();

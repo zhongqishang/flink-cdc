@@ -387,7 +387,6 @@ public class FlinkEventSink {
          */
         protected static Map<String, String> writeProperties(
                 FileFormat format, FlinkMultiWriteConf conf) {
-            // Todo
             // common properties
             Map<String, String> writeProperties = Maps.newHashMap();
 
