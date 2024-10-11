@@ -75,7 +75,7 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
     private SchemaEvolutionClient schemaEvolutionClient;
 
     private final OperatorID schemaOperatorID;
-    private final Map<TableId, Schema> schemaMaps = new ConcurrentHashMap<>();
+    private final Map<TableId, Schema> schemasCache = new ConcurrentHashMap<>();
     private final Map<TableId, Table> tables = new ConcurrentHashMap<>();
     private final Map<TableId, IcebergEventStreamWriter<RowData>> writes =
             new ConcurrentHashMap<>();
@@ -150,7 +150,7 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
             TableId tableId = ((SchemaChangeEvent) event).tableId();
             if (event instanceof CreateTableEvent) {
                 CreateTableEvent createTableEvent = (CreateTableEvent) event;
-                schemaMaps.put(createTableEvent.tableId(), createTableEvent.getSchema());
+                schemasCache.put(createTableEvent.tableId(), createTableEvent.getSchema());
             } else if (event instanceof TruncateTableEvent) {
                 output.collect(
                         new StreamRecord<>(
@@ -164,8 +164,8 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
                 checkLatestSchema(tableId);
                 Schema applySchemaChangeEvent =
                         SchemaUtils.applySchemaChangeEvent(
-                                schemaMaps.get(tableId), schemaChangeEvent);
-                schemaMaps.put(schemaChangeEvent.tableId(), applySchemaChangeEvent);
+                                schemasCache.get(tableId), schemaChangeEvent);
+                schemasCache.put(schemaChangeEvent.tableId(), applySchemaChangeEvent);
             }
         } else if (event instanceof FlushEvent) {
             TableId tableId = ((FlushEvent) event).getTableId();
@@ -190,14 +190,19 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
             IcebergEventStreamWriter<RowData> streamWriter =
                     writes.computeIfAbsent(tableId, k -> createCopySinkWriter(tableId));
             DataChangeEvent dataChangeEvent = (DataChangeEvent) event;
-            serializerRecord(streamWriter, dataChangeEvent);
+            try {
+                serializerRecord(streamWriter, dataChangeEvent);
+            } catch (ClassCastException e) {
+                LOG.error("Schema : {}, row data : {}", schemasCache.get(tableId), dataChangeEvent);
+                throw e;
+            }
         }
     }
 
     private void checkLatestSchema(TableId tableId) throws Exception {
-        if (!schemaMaps.containsKey(tableId)) {
+        if (!schemasCache.containsKey(tableId)) {
             Optional<Schema> latestSchema = schemaEvolutionClient.getLatestSchema(tableId);
-            latestSchema.ifPresent(schema -> schemaMaps.put(tableId, schema));
+            latestSchema.ifPresent(schema -> schemasCache.put(tableId, schema));
         }
     }
 
@@ -242,9 +247,15 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
             case UPDATE:
             case REPLACE:
             case INSERT:
-                // TODO validate schema
-                // Kafka multiple partitions duo to not in strict order
                 RecordData after = dataChangeEvent.after();
+                // TODO Kafka multiple partitions duo to not in strict order
+                // validate schema
+                if (schemasCache.get(tableId).getColumnCount() != after.getArity()) {
+                    LOG.warn(
+                            "Row data count not equal, schema column count is {}, row data column count is {}",
+                            schemasCache.get(tableId).getColumnCount(),
+                            after.getArity());
+                }
                 RowData rowData = serializerRecord(tableId, RowKind.INSERT, after);
                 streamWriter.processElement(new StreamRecord<>(rowData));
                 break;
@@ -269,12 +280,12 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
     }
 
     private RowData serializerRecord(TableId tableId, RowKind rowKind, RecordData recordData) {
-        if (!schemaMaps.containsKey(tableId)) {
+        if (!schemasCache.containsKey(tableId)) {
             throw new RuntimeException("Table " + tableId + " does not exist");
         }
         // TODO 应该以 iceberg schema 为准
         org.apache.iceberg.Schema icebergSchema = tables.get(tableId).schema();
-        Schema schema = schemaMaps.get(tableId);
+        Schema schema = schemasCache.get(tableId);
         List<org.apache.flink.cdc.common.types.DataType> columnDataTypes =
                 schema.getColumnDataTypes();
 
