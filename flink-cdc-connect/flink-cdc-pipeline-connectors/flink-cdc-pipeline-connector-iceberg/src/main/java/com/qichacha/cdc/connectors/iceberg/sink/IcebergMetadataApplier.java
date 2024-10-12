@@ -115,6 +115,14 @@ public class IcebergMetadataApplier implements MetadataApplier {
             return;
         }
 
+        // Comment
+        String comment = createTableEvent.getSchema().comment();
+        if (comment == null || comment.isEmpty()) {
+            properties.remove("comment");
+        } else {
+            properties.put("comment", comment);
+        }
+
         org.apache.iceberg.Schema icebergSchema = FlinkCdcSchemaUtil.convert(schema);
         try {
             catalog.createTable(
