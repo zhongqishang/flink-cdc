@@ -117,9 +117,7 @@ public class IcebergMetadataApplier implements MetadataApplier {
 
         // Comment
         String comment = createTableEvent.getSchema().comment();
-        if (comment == null || comment.isEmpty()) {
-            properties.remove("comment");
-        } else {
+        if (comment != null && !comment.isEmpty()) {
             properties.put("comment", comment);
         }
 
