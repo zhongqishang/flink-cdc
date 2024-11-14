@@ -76,7 +76,7 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
     private static final long INITIAL_CHECKPOINT_ID = -1L;
     private static final byte[] EMPTY_MANIFEST_DATA = new byte[0];
 
-    private static final Logger LOG = LoggerFactory.getLogger(IcebergFilesCommitter.class);
+    private static final Logger LOG = LoggerFactory.getLogger(IcebergTableFilesCommitter.class);
     private static final String FLINK_JOB_ID = "flink.job-id";
     private static final String OPERATOR_ID = "flink.operator-id";
 
@@ -187,6 +187,8 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
         this.checkpointsState = context.getOperatorStateStore().getBroadcastState(STATE_DESCRIPTOR);
         this.jobIdState = context.getOperatorStateStore().getListState(JOB_ID_DESCRIPTOR);
         if (context.isRestored()) {
+            LOG.info("Start restored.");
+
             Iterable<String> jobIdIterable = jobIdState.get();
             if (jobIdIterable == null || !jobIdIterable.iterator().hasNext()) {
                 LOG.warn(
@@ -211,11 +213,15 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
                     getMaxCommittedCheckpointId(
                             table, restoredFlinkJobId, operatorUniqueId, branch);
 
+            LOG.info("Max Committed CheckpointId : {}", maxCommittedCheckpointId);
+
             SortedMap<Long, byte[]> checkpointSortedMap = checkpointsState.get(identifier.name());
             if (checkpointSortedMap == null) {
                 LOG.info("Can not find any state for {}, restore skipped.", identifier.name());
                 return;
             }
+
+            LOG.info("Uncommitted DataFiles CheckpointId {}.", checkpointSortedMap.keySet());
 
             NavigableMap<Long, byte[]> uncommittedDataFiles =
                     Maps.newTreeMap(checkpointSortedMap).tailMap(maxCommittedCheckpointId, false);
