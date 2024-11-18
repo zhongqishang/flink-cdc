@@ -19,10 +19,8 @@
 
 package org.apache.iceberg.flink.sink;
 
-import org.apache.flink.api.common.state.BroadcastState;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
-import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.common.typeinfo.PrimitiveArrayTypeInfo;
 import org.apache.flink.core.io.SimpleVersionedSerialization;
@@ -61,6 +59,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
@@ -89,7 +88,6 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
     private static final String MAX_COMMITTED_CHECKPOINT_ID = "flink.max-committed-checkpoint-id";
     static final String MAX_CONTINUOUS_EMPTY_COMMITS = "flink.max-continuous-empty-commits";
 
-    private final TableIdentifier identifier;
     // TableLoader to load iceberg table lazily.
     private final TableLoader tableLoader;
     private final boolean replacePartitions;
@@ -131,9 +129,8 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
             new ListStateDescriptor<>("iceberg-flink-job-id", BasicTypeInfo.STRING_TYPE_INFO);
     private transient ListState<String> jobIdState;
     // All pending checkpoints states for this function.
-    private static final MapStateDescriptor<String, SortedMap<Long, byte[]>> STATE_DESCRIPTOR =
-            buildStateDescriptor();
-    private transient BroadcastState<String, SortedMap<Long, byte[]>> checkpointsState;
+    private final ListStateDescriptor<SortedMap<Long, byte[]>> stateDescriptor;
+    private transient ListState<SortedMap<Long, byte[]>> checkpointsState;
 
     private final Integer workerPoolSize;
     private final PartitionSpec spec;
@@ -147,13 +144,13 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
             Integer workerPoolSize,
             String branch,
             PartitionSpec spec) {
-        this.identifier = identifier;
         this.tableLoader = tableLoader;
         this.replacePartitions = replacePartitions;
         this.snapshotProperties = snapshotProperties;
         this.workerPoolSize = workerPoolSize;
         this.branch = branch;
         this.spec = spec;
+        this.stateDescriptor = buildStateDescriptor(identifier.name());
     }
 
     @Override
@@ -184,7 +181,7 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
                         attemptId);
         this.maxCommittedCheckpointId = INITIAL_CHECKPOINT_ID;
 
-        this.checkpointsState = context.getOperatorStateStore().getBroadcastState(STATE_DESCRIPTOR);
+        this.checkpointsState = context.getOperatorStateStore().getListState(stateDescriptor);
         this.jobIdState = context.getOperatorStateStore().getListState(JOB_ID_DESCRIPTOR);
         if (context.isRestored()) {
             LOG.info("Start restored.");
@@ -214,14 +211,15 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
                             table, restoredFlinkJobId, operatorUniqueId, branch);
 
             LOG.info("Max Committed CheckpointId : {}", maxCommittedCheckpointId);
-
-            SortedMap<Long, byte[]> checkpointSortedMap = checkpointsState.get(identifier.name());
-            if (checkpointSortedMap == null) {
-                LOG.info("Can not find any state for {}, restore skipped.", identifier.name());
+            Iterator<SortedMap<Long, byte[]>> iterator = checkpointsState.get().iterator();
+            if (!iterator.hasNext()) {
+                LOG.info("Can not find any state for {}, restore skipped.", table.name());
                 return;
             }
 
-            LOG.info("Uncommitted DataFiles CheckpointId {}.", checkpointSortedMap.keySet());
+            SortedMap<Long, byte[]> checkpointSortedMap = iterator.next();
+
+            LOG.info("Checkpoints state is {}.", checkpointSortedMap.keySet());
 
             NavigableMap<Long, byte[]> uncommittedDataFiles =
                     Maps.newTreeMap(checkpointSortedMap).tailMap(maxCommittedCheckpointId, false);
@@ -239,6 +237,7 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
                 }
 
                 long maxUncommittedCheckpointId = uncommittedDataFiles.lastKey();
+                LOG.info("Commit max uncommitted checkpoint id {}.", maxUncommittedCheckpointId);
                 commitUpToCheckpoint(
                         uncommittedDataFiles,
                         restoredFlinkJobId,
@@ -262,8 +261,8 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
         writeToManifestSinceLastSnapshot(checkpointId);
 
         // Reset the snapshot state to the latest state.
-        checkpointsState.remove(identifier.name());
-        checkpointsState.put(identifier.name(), dataFilesPerCheckpoint);
+        checkpointsState.clear();
+        checkpointsState.add(dataFilesPerCheckpoint);
 
         jobIdState.clear();
         jobIdState.add(flinkJobId);
@@ -552,7 +551,7 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
     }
 
     @VisibleForTesting
-    static MapStateDescriptor<String, SortedMap<Long, byte[]>> buildStateDescriptor() {
+    private ListStateDescriptor<SortedMap<Long, byte[]>> buildStateDescriptor(String name) {
         Comparator<Long> longComparator = Comparators.forType(Types.LongType.get());
         // Construct a SortedMapTypeInfo.
         SortedMapTypeInfo<Long, byte[]> sortedMapTypeInfo =
@@ -560,9 +559,8 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
                         BasicTypeInfo.LONG_TYPE_INFO,
                         PrimitiveArrayTypeInfo.BYTE_PRIMITIVE_ARRAY_TYPE_INFO,
                         longComparator);
-
-        return new MapStateDescriptor<>(
-                "iceberg-files-committer-state", BasicTypeInfo.STRING_TYPE_INFO, sortedMapTypeInfo);
+        return new ListStateDescriptor<>(
+                String.format("iceberg-files-committer-state-%s", name), sortedMapTypeInfo);
     }
 
     static long getMaxCommittedCheckpointId(
