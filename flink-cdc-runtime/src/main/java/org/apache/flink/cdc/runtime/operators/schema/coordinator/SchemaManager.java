@@ -171,6 +171,7 @@ public class SchemaManager {
             versionedSchemas.put(INITIAL_SCHEMA_VERSION, newSchema);
             tableSchemas.putIfAbsent(tableId, versionedSchemas);
         }
+        LOG.info("Register new schema is {}", newSchema);
     }
 
     /** Serializer for {@link SchemaManager}. */

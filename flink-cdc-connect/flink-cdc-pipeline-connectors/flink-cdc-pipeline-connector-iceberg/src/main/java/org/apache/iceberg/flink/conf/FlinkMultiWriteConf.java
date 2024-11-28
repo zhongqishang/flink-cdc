@@ -53,8 +53,11 @@ public class FlinkMultiWriteConf {
 
     private final FlinkMultiConfParser confParser;
 
-    public FlinkMultiWriteConf(Map<String, String> writeOptions, ReadableConfig readableConfig) {
-        this.confParser = new FlinkMultiConfParser(writeOptions, readableConfig);
+    public FlinkMultiWriteConf(
+            Map<String, String> tableProperties,
+            Map<String, String> writeOptions,
+            ReadableConfig readableConfig) {
+        this.confParser = new FlinkMultiConfParser(tableProperties, writeOptions, readableConfig);
     }
 
     public boolean overwriteMode() {

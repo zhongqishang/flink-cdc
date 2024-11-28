@@ -25,7 +25,6 @@ import org.apache.flink.util.TimeUtils;
 
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
-import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 
 import java.time.Duration;
 import java.util.List;
@@ -38,8 +37,11 @@ class FlinkMultiConfParser {
     private final Map<String, String> options;
     private final ReadableConfig readableConfig;
 
-    FlinkMultiConfParser(Map<String, String> options, ReadableConfig readableConfig) {
-        this.tableProperties = Maps.newHashMap();
+    FlinkMultiConfParser(
+            Map<String, String> tableProperties,
+            Map<String, String> options,
+            ReadableConfig readableConfig) {
+        this.tableProperties = tableProperties;
         this.options = options;
         this.readableConfig = readableConfig;
     }

@@ -94,6 +94,7 @@ public class FlinkEventSink {
         private ReadableConfig readableConfig = new Configuration();
         private final Map<String, String> writeOptions = Maps.newHashMap();
         private FlinkMultiWriteConf flinkWriteConf = null;
+        private Map<String, String> tableProperties;
 
         private Builder() {}
 
@@ -241,6 +242,11 @@ public class FlinkEventSink {
             return this;
         }
 
+        public Builder tableProperties(Map<String, String> tableProperties) {
+            this.tableProperties = tableProperties;
+            return this;
+        }
+
         private <T> DataStreamSink<T> chainIcebergOperators() {
             Preconditions.checkArgument(
                     inputCreator != null,
@@ -249,7 +255,7 @@ public class FlinkEventSink {
 
             DataStream<Event> eventDataStream = inputCreator.apply(uidPrefix);
 
-            flinkWriteConf = new FlinkMultiWriteConf(writeOptions, readableConfig);
+            flinkWriteConf = new FlinkMultiWriteConf(tableProperties, writeOptions, readableConfig);
 
             // Add parallel writers that append rows to files
             SingleOutputStreamOperator<TableWriteResult> writerStream =
