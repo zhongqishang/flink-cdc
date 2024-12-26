@@ -34,6 +34,7 @@ import org.apache.flink.cdc.common.types.DataType;
 import org.apache.flink.util.FlinkRuntimeException;
 
 import com.qichacha.cdc.connectors.iceberg.types.utils.FlinkCdcSchemaUtil;
+import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.Transaction;
@@ -49,6 +50,7 @@ import org.apache.iceberg.types.Types;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -122,13 +124,25 @@ public class IcebergMetadataApplier implements MetadataApplier {
         }
 
         org.apache.iceberg.Schema icebergSchema = FlinkCdcSchemaUtil.convert(schema);
+        HashMap<String, String> cloneMap = new HashMap<>(properties);
         try {
-            catalog.createTable(
-                    tableIdentifier,
-                    icebergSchema,
-                    PartitionSpec.unpartitioned(),
-                    // "hdfs://qcc/data/hive/warehouse/ods_iceberg_spider_company_entity.db/t_gongshang_entity_app_config",
-                    properties);
+            if (cloneMap.containsKey(CatalogProperties.WAREHOUSE_LOCATION)) {
+                String warehouse = cloneMap.get(CatalogProperties.WAREHOUSE_LOCATION);
+                String location =
+                        String.format(
+                                "%s/%s.db/%s",
+                                warehouse, tableId.getSchemaName(), tableId.getTableName());
+                cloneMap.remove(CatalogProperties.URI);
+                catalog.createTable(
+                        tableIdentifier,
+                        icebergSchema,
+                        PartitionSpec.unpartitioned(),
+                        location,
+                        cloneMap);
+            } else {
+                catalog.createTable(
+                        tableIdentifier, icebergSchema, PartitionSpec.unpartitioned(), properties);
+            }
         } catch (AlreadyExistsException e) {
             LOG.warn("Failed to apply create table, event: {}", createTableEvent, e);
         }
