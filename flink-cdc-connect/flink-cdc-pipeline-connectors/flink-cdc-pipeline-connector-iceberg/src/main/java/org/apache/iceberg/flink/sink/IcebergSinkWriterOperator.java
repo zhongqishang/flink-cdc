@@ -87,6 +87,8 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
             CONVERTERS = new ConcurrentHashMap<>();
     private long schemaChangeCheckpointId = Integer.MIN_VALUE;
 
+    private volatile boolean print = false;
+
     public IcebergSinkWriterOperator(
             OperatorID schemaOperatorID,
             CatalogLoader catalogLoader,
@@ -250,11 +252,13 @@ public class IcebergSinkWriterOperator extends AbstractStreamOperator<TableWrite
                 RecordData after = dataChangeEvent.after();
                 // TODO Kafka multiple partitions duo to not in strict order
                 // validate schema
-                if (schemasCache.get(tableId).getColumnCount() != after.getArity()) {
+                if (!print && schemasCache.get(tableId).getColumnCount() != after.getArity()) {
+                    print = true;
                     LOG.warn(
-                            "Row data count not equal, schema column count is {}, row data column count is {}",
+                            "Row data count not equal, schema column is {}, row data column count is {}",
                             schemasCache.get(tableId).getColumnCount(),
                             after.getArity());
+                    LOG.warn("schema cache is {}", schemasCache.get(tableId));
                 }
                 RowData rowData = serializerRecord(tableId, RowKind.INSERT, after);
                 streamWriter.processElement(new StreamRecord<>(rowData));
