@@ -70,6 +70,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
@@ -318,7 +319,7 @@ public class SchemaOperator extends AbstractStreamOperator<Event>
             CompletableFuture<CoordinationResponse> responseFuture =
                     toCoordinator.sendRequestToCoordinator(
                             getOperatorID(), new SerializedValue<>(request));
-            return CoordinationResponseUtils.unwrap(responseFuture.get());
+            return CoordinationResponseUtils.unwrap(responseFuture.get(120, TimeUnit.SECONDS));
         } catch (Exception e) {
             throw new IllegalStateException(
                     "Failed to send request to coordinator: " + request.toString(), e);
