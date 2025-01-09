@@ -165,7 +165,7 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
         this.committerMetrics = new IcebergFilesCommitterMetrics(super.metrics, table.name());
 
         maxContinuousEmptyCommits =
-                PropertyUtil.propertyAsInt(table.properties(), MAX_CONTINUOUS_EMPTY_COMMITS, 10);
+                PropertyUtil.propertyAsInt(table.properties(), MAX_CONTINUOUS_EMPTY_COMMITS, 36);
         Preconditions.checkArgument(
                 maxContinuousEmptyCommits > 0, MAX_CONTINUOUS_EMPTY_COMMITS + " must be positive");
 
