@@ -79,6 +79,8 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
     private static final String FLINK_JOB_ID = "flink.job-id";
     private static final String OPERATOR_ID = "flink.operator-id";
 
+    private static final String SPARK_JOB_APP = "spark.app.id";
+
     // The max checkpoint id we've committed to iceberg table. As the flink's checkpoint is always
     // increasing, so we could correctly commit all the data files whose checkpoint id is greater
     // than
@@ -197,6 +199,10 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
                 return;
             }
 
+            if (isSparkMove(table, branch)) {
+                LOG.warn("State storage is change, skip the restore state.");
+                return;
+            }
             String restoredFlinkJobId = jobIdIterable.iterator().next();
             Preconditions.checkState(
                     !Strings.isNullOrEmpty(restoredFlinkJobId),
@@ -206,7 +212,7 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
             // the new flink job even if it's restored from a snapshot created by another different
             // flink job, so it's safe to assign the max committed checkpoint id from restored flink
             // job to the current flink job.
-            this.maxCommittedCheckpointId =
+            long maxCommittedCheckpointId =
                     getMaxCommittedCheckpointId(
                             table, restoredFlinkJobId, operatorUniqueId, branch);
 
@@ -561,6 +567,23 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
                         longComparator);
         return new ListStateDescriptor<>(
                 String.format("iceberg-files-committer-state-%s", name), sortedMapTypeInfo);
+    }
+
+    static boolean isSparkMove(Table table, String branch) {
+        Snapshot snapshot = table.snapshot(branch);
+
+        while (snapshot != null) {
+            Map<String, String> summary = snapshot.summary();
+            String optimize = summary.get("snapshot.producer");
+            if ("OPTIMIZE".equals(optimize)) {
+                Long parentSnapshotId = snapshot.parentId();
+                snapshot = parentSnapshotId != null ? table.snapshot(parentSnapshotId) : null;
+                continue;
+            }
+            String sparkAppId = summary.get(SPARK_JOB_APP);
+            return sparkAppId != null;
+        }
+        return false;
     }
 
     static long getMaxCommittedCheckpointId(
