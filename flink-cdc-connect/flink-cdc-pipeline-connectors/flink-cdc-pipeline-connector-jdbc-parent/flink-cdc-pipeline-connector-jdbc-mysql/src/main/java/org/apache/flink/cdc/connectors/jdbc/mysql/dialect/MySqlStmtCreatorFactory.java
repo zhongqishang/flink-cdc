@@ -35,6 +35,7 @@ import java.util.stream.Collectors;
 /** A factory class for creating statements in MySQL dialect. */
 public class MySqlStmtCreatorFactory {
     public static final MySqlStmtCreatorFactory INSTANCE = new MySqlStmtCreatorFactory();
+    private static final String QUOTED_CHARACTER = "`";
 
     private static final String RENAME_DDL = "ALTER TABLE %s RENAME COLUMN `%s` TO `%s`;";
     private static final String DROP_COLUMN_DDL = "ALTER TABLE %s DROP COLUMN `%s`;";
@@ -43,7 +44,15 @@ public class MySqlStmtCreatorFactory {
         String tableName = tableId.identifier();
         // Building column names and value placeholders
         String columnNames =
-                columns.stream().map(Column::getName).collect(Collectors.joining(", "));
+                columns.stream()
+                        .map(
+                                column ->
+                                        String.format(
+                                                "%s%s%s",
+                                                QUOTED_CHARACTER,
+                                                column.getName(),
+                                                QUOTED_CHARACTER))
+                        .collect(Collectors.joining(", "));
 
         String valuePlaceholders =
                 columns.stream().map(column -> "?").collect(Collectors.joining(", "));
@@ -61,7 +70,16 @@ public class MySqlStmtCreatorFactory {
         // Building the update part
         String updatePart =
                 columns.stream()
-                        .map(column -> column.getName() + " = VALUES(" + column.getName() + ")")
+                        .map(
+                                column ->
+                                        QUOTED_CHARACTER
+                                                + column.getName()
+                                                + QUOTED_CHARACTER
+                                                + " = VALUES("
+                                                + QUOTED_CHARACTER
+                                                + column.getName()
+                                                + QUOTED_CHARACTER
+                                                + ")")
                         .collect(Collectors.joining(", "));
 
         query.append(updatePart).append(";");
@@ -105,7 +123,7 @@ public class MySqlStmtCreatorFactory {
         JdbcColumn type = columnBuilder.build();
 
         return String.format(
-                "ALTER TABLE %s MODIFY COLUMN %s %s;",
+                "ALTER TABLE %s MODIFY COLUMN `%s` %s;",
                 tableId.identifier(), columnName, type.getColumnType());
     }
 
