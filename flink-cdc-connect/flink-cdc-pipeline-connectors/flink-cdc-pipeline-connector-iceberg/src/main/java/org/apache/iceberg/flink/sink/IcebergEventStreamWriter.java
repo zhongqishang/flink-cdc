@@ -105,7 +105,7 @@ public class IcebergEventStreamWriter<T> extends AbstractStreamOperator<TableWri
         // Note that if the task is not closed after calling endInput, checkpoint may be triggered
         // again causing files to be sent repeatedly, the writer is marked as null after the last
         // file is sent to guard against duplicated writes.
-        flush(IcebergStreamWriter.END_INPUT_CHECKPOINT_ID);
+        flush(Long.MAX_VALUE);
     }
 
     @Override

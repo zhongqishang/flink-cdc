@@ -499,7 +499,7 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
     @Override
     public void endInput() throws IOException {
         // Flush the buffered data files into 'dataFilesPerCheckpoint' firstly.
-        long currentCheckpointId = IcebergStreamWriter.END_INPUT_CHECKPOINT_ID;
+        long currentCheckpointId = Long.MAX_VALUE;
         writeToManifestSinceLastSnapshot(currentCheckpointId);
 
         commitUpToCheckpoint(
