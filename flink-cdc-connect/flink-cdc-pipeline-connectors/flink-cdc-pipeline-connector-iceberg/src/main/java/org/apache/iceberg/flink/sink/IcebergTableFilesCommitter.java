@@ -32,6 +32,7 @@ import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.runtime.typeutils.SortedMapTypeInfo;
 
+import com.qichacha.cdc.connectors.iceberg.utils.EnvUtils;
 import org.apache.iceberg.AppendFiles;
 import org.apache.iceberg.ManifestFile;
 import org.apache.iceberg.PartitionSpec;
@@ -77,6 +78,7 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
 
     private static final Logger LOG = LoggerFactory.getLogger(IcebergTableFilesCommitter.class);
     private static final String FLINK_JOB_ID = "flink.job-id";
+    private static final String FLINK_TASK_ID = "flink.task-id";
     private static final String OPERATOR_ID = "flink.operator-id";
 
     private static final String SPARK_JOB_APP = "spark.app.id";
@@ -470,6 +472,7 @@ class IcebergTableFilesCommitter extends AbstractStreamOperator<Void>
         // ones
         // used by the sink.
         operation.set(MAX_COMMITTED_CHECKPOINT_ID, Long.toString(checkpointId));
+        operation.set(FLINK_TASK_ID, EnvUtils.getTaskId());
         operation.set(FLINK_JOB_ID, newFlinkJobId);
         operation.set(OPERATOR_ID, operatorId);
         operation.toBranch(branch);
