@@ -19,6 +19,7 @@
 
 package com.qichacha.cdc.connectors.iceberg.utils;
 
+/** Get task id. */
 public class EnvUtils {
     public static String getTaskId() {
         String key = "ELKLOG_JOBID";
